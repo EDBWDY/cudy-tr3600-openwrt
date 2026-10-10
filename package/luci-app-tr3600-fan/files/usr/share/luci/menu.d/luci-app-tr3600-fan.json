@@ -1,0 +1,8 @@
+{
+  "admin/system/tr3600_fan": {
+    "title": "散热风扇控制",
+    "order": 61,
+    "action": { "type": "view", "path": "system/tr3600-fan" },
+    "depends": { "acl": [ "luci-app-tr3600-fan" ] }
+  }
+}

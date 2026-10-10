@@ -1,0 +1,6 @@
+#!/bin/sh /etc/rc.common
+START=99
+start() {
+    /usr/libexec/tr3600-fan boot || logger -t tr3600-fan 'Could not apply saved mode; check thermal driver'
+}
+reload() { start; }

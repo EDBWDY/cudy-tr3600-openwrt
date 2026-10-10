@@ -1,0 +1,2 @@
+config fan 'main'
+	option mode 'auto'

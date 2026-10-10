@@ -1,0 +1,14 @@
+{
+  "admin/status/tr3600_usb": {
+    "title": "USB 状态",
+    "order": 45,
+    "action": { "type": "view", "path": "status/tr3600_usb" },
+    "depends": { "acl": [ "luci-app-tr3600-usb" ] }
+  },
+  "admin/system/tr3600_usb": {
+    "title": "USB 管理",
+    "order": 62,
+    "action": { "type": "view", "path": "system/tr3600-usb-v1_1_1" },
+    "depends": { "acl": [ "luci-app-tr3600-usb" ] }
+  }
+}

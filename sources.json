@@ -1,0 +1,22 @@
+{
+  "openwrt": {"url": "https://github.com/openwrt/openwrt.git", "commit": "046aec0dccd90f5a156cb8e9725c121c81955dd3"},
+  "author": {"url": "https://github.com/hyqhyq3/openwrt-cudy-tr3600", "commit": "58d04dab73dd482f7c288cbdf3b3e30de29f0ae7"},
+  "feeds": {
+    "packages": {"url": "https://github.com/openwrt/packages.git", "commit": "4f03c21a2b09ad0d52cdd1fbdbcb29f88c0ce16f"},
+    "luci": {"url": "https://github.com/openwrt/luci.git", "commit": "be446e365cfd2cfee549a0c32af884dfb2cced66"},
+    "routing": {"url": "https://github.com/openwrt/routing.git", "commit": "b32747dca62435f1ea01b7a5320c3da15eead46f"},
+    "telephony": {"url": "https://github.com/openwrt/telephony.git", "commit": "2618106d5846a4a542fdf5809f0d3ed228ce439b"},
+    "video": {"url": "https://github.com/openwrt/video.git", "commit": "094bf58da6682f895255a35a84349a79dab4bf95"}
+  },
+  "plugins": {
+    "openclash": {"url": "https://github.com/vernesong/OpenClash.git", "commit": "c3a33c1d3407956fdf8f0e0b7c1a4c52e6ad9593"},
+    "argon": {"url": "https://github.com/jerrykuku/luci-theme-argon.git", "commit": "2a28799ca063aba7edc3314143b93c8325c86df4"},
+    "argon_config": {"url": "https://github.com/jerrykuku/luci-app-argon-config.git", "commit": "3e099a37c3f71d0de677f1b6b0f4bffd57d91dac"},
+    "immortal_luci": {"url": "https://github.com/immortalwrt/luci.git", "commit": "d6167ea0645cbd1327708d85f94824f42d0eb872"}
+  },
+  "mihomo": {
+    "version": "1.19.32",
+    "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-linux-arm64-v1.19.32.gz",
+    "sha256": "9dd862e28b46ff7d775f169cceebc28deccaa0a9e804237d421cd2571e0caba0"
+  }
+}

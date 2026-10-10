@@ -1,0 +1,73 @@
+#!/bin/sh
+# TR3600 v1 / hyqhyq3 v1.0.0. Keep the kernel thermal governor enabled.
+set -e
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+Z=/sys/class/thermal/thermal_zone0
+fail() { echo "$*" >&2; exit 1; }
+[ "$(cat /tmp/sysinfo/board_name)" = cudy,tr3600-v1 ] || fail 'Unsupported board'
+[ "$(cat "$Z/type")" = cpu-thermal ] || fail 'Unexpected thermal zone'
+F=
+for h in /sys/class/hwmon/hwmon*; do
+    [ "$(cat "$h/name")" = pwmfan ] && F="$h"
+done
+[ -n "$F" ] || fail 'Fan driver unavailable'
+for i in 6 7 8 9; do
+    [ "$(cat "$Z/trip_point_${i}_type")" = active ] || fail 'Unexpected thermal trip'
+    [ "$(cat "$Z/cdev$((i - 3))/type")" = pwm-fan ] || fail 'Unexpected cooling map'
+done
+readmode() { uci -q get tr3600_fan.main.mode || echo auto; }
+apply_mode() {
+    [ "$(cat "$Z/mode")" = enabled ] || fail 'Kernel temperature protection is disabled'
+    [ "$(cat "$Z/policy")" = step_wise ] || fail 'Unexpected thermal governor'
+    case "$1" in
+        auto)  set -- 65000 72000 80000 88000 ;;
+        boost) set -- 55000 62000 70000 78000 ;;
+        full)  set -- 65000 72000 80000 0 ;;
+        *) fail 'Invalid mode' ;;
+    esac
+    # Change only the four added fan trips, never hot/critical protection.
+    for i in 6 7 8 9; do
+        printf '%s\n' "$1" > "$Z/trip_point_${i}_temp"
+        [ "$(cat "$Z/trip_point_${i}_temp")" = "$1" ] || fail 'Threshold write failed'
+        shift
+    done
+}
+status() {
+    . /usr/share/libubox/jshn.sh
+    json_init
+    json_add_string mode "$(readmode)"
+    json_add_string governor "$(cat "$Z/policy")"
+    json_add_string thermal_mode "$(cat "$Z/mode")"
+    json_add_int cpu_temp "$(cat "$Z/temp")"
+    json_add_int pwm "$(cat "$F/pwm1")"
+    json_add_int state "$(cat "$Z/cdev3/cur_state")"
+    json_add_array thresholds
+    for i in 6 7 8 9; do json_add_int '' "$(cat "$Z/trip_point_${i}_temp")"; done
+    json_close_array
+    json_add_array sensors
+    for h in /sys/class/hwmon/hwmon*; do
+        [ -r "$h/temp1_input" ] || continue
+        json_add_object ''
+        json_add_string name "$(cat "$h/name")"
+        json_add_int temp "$(cat "$h/temp1_input")"
+        json_close_object
+    done
+    json_close_array
+    json_dump
+}
+case "${1:-}" in
+    status) [ "$#" = 1 ] || fail 'Invalid arguments'; status ;;
+    set)
+        [ "$#" = 2 ] || fail 'Invalid arguments'
+        case "$2" in auto|boost|full) ;; *) fail 'Invalid mode' ;; esac
+        mkdir /var/lock/tr3600-fan.lock 2>/dev/null || fail 'Another change is in progress'
+        trap 'rmdir /var/lock/tr3600-fan.lock' EXIT
+        apply_mode "$2"
+        uci set tr3600_fan.main.mode="$2"
+        uci commit tr3600_fan
+        logger -t tr3600-fan "Cooling mode set to $2"
+        status
+        ;;
+    boot) [ "$#" = 1 ] || fail 'Invalid arguments'; apply_mode "$(readmode)" ;;
+    *) fail 'Usage: tr3600-fan status | set auto/boost/full | boot' ;;
+esac

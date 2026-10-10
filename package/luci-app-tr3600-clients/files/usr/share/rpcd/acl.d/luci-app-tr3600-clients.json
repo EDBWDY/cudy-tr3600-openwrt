@@ -1,0 +1,7 @@
+{
+  "luci-app-tr3600-clients": {
+    "description": "Client inventory, aliases and per-client Internet policy",
+    "read": { "ubus": { "tr3600.clients": [ "status" ] } },
+    "write": { "ubus": { "tr3600.clients": [ "save" ] } }
+  }
+}

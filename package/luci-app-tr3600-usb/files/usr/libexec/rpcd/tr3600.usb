@@ -1,0 +1,260 @@
+#!/bin/sh
+# LuCI USB inventory and an isolated DHCP USB WAN interface.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+. /usr/share/libubox/jshn.sh
+KERNEL=$(uname -r)
+
+value() { cat "$1" 2>/dev/null || true; }
+reply() {
+    json_init
+    json_add_boolean ok "$1"
+    json_add_string message "$2"
+    json_dump
+}
+available() {
+    [ -d "/sys/module/$1" ] || [ -f "/lib/modules/$KERNEL/$1.ko" ] ||
+        grep -Eq "(^|/)$1\\.ko$" "/lib/modules/$KERNEL/modules.builtin" 2>/dev/null ||
+        grep -qw "$1" /proc/filesystems
+}
+is_usb_net() {
+    case "$1" in ''|*[!a-zA-Z0-9_.-]*|lo|br-*|eth0|eth1|tailscale*|phy*|zt*) return 1;; esac
+    [ "${#1}" -le 15 ] || return 1
+    [ -d "/sys/class/net/$1" ] || return 1
+    case "$(readlink -f "/sys/class/net/$1/device")" in
+        */usb[0-9]*/*) return 0;;
+    esac
+    return 1
+}
+status() {
+    local d p i drivers driver class blocks path node info mount usage n net owner s raw
+    json_init
+    json_add_boolean ok 1
+    json_add_string kernel "$KERNEL"
+    json_add_array devices
+    for d in /sys/bus/usb/devices/*; do
+        [ -r "$d/idVendor" ] || continue
+        [ "$(value "$d/bDeviceClass")" != 09 ] || continue
+        p=${d##*/}
+        drivers=; class=
+        for i in "$d"/"$p":*; do
+            [ -d "$i" ] || continue
+            driver=
+            [ -L "$i/driver" ] && driver=$(readlink -f "$i/driver" 2>/dev/null)
+            [ -n "$driver" ] && drivers="${drivers:+$drivers, }${driver##*/}"
+            case "$(value "$i/bInterfaceClass")" in
+                08) class="${class:+$class / }USB 存储";;
+                02|0a|e0) class="${class:+$class / }通信/网络接口";;
+            esac
+        done
+        json_add_object ''
+        json_add_string port "$p"
+        json_add_string product "$(value "$d/product")"
+        json_add_string manufacturer "$(value "$d/manufacturer")"
+        json_add_string vidpid "$(value "$d/idVendor"):$(value "$d/idProduct")"
+        json_add_string speed "$(value "$d/speed")"
+        json_add_string type "${class:-其他 USB 设备}"
+        json_add_string drivers "$drivers"
+        json_close_object
+    done
+    json_close_array
+    json_add_array disks
+    for d in /sys/class/block/sd*; do
+        [ -d "$d" ] || continue
+        path=$(readlink -f "$d")
+        case "$path" in */usb[0-9]*/*) ;; *) continue;; esac
+        node="/dev/${d##*/}"
+        info=$(block info "$node" 2>/dev/null)
+        mount=$(awk -v dev="$node" '$1 == dev {print $2; exit}' /proc/self/mounts)
+        usage=
+        [ -n "$mount" ] && usage=$(df -Pk "$node" 2>/dev/null | awk 'NR==2 {print $5}')
+        json_add_object ''
+        json_add_string device "$node"
+        json_add_string type "$(printf '%s' "$info" | sed -n 's/.* TYPE="\([^"]*\)".*/\1/p')"
+        json_add_string uuid "$(printf '%s' "$info" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p')"
+        json_add_string mount "$mount"
+        json_add_string used "$usage"
+        json_add_string sectors "$(value "$d/size")"
+        json_add_boolean partition "$([ -f "$d/partition" ] && echo 1 || echo 0)"
+        json_close_object
+    done
+    json_close_array
+    json_add_array networks
+    for d in /sys/class/net/*; do
+        n=${d##*/}
+        is_usb_net "$n" || continue
+        owner=
+        for s in $(uci -q show network | sed -n 's/^network\.\([^.=]*\)=interface$/\1/p'); do
+            [ "$(uci -q get "network.$s.device")" = "$n" ] && owner="${owner:+$owner, }$s"
+        done
+        # Also reject devices already used in a bridge.
+        if ! device_free "$n"; then owner="${owner:+$owner, }其他接口或网桥"; fi
+        json_add_object ''
+        json_add_string device "$n"
+        driver=
+        [ -L "$d/device/driver" ] && driver=$(readlink -f "$d/device/driver" 2>/dev/null)
+        json_add_string driver "${driver##*/}"
+        json_add_string state "$(value "$d/operstate")"
+        json_add_string owner "$owner"
+        json_close_object
+    done
+    json_close_array
+    json_add_array support
+    while IFS='|' read -r s class modules; do
+        [ -n "$s" ] || continue
+        json_add_object ''
+        json_add_string name "$s"
+        json_add_string packages "$class"
+        blocks=1
+        for i in $modules; do available "$i" || blocks=0; done
+        json_add_boolean available "$blocks"
+        json_close_object
+    done <<'CAPS'
+USB 硬盘 / U 盘|kmod-usb-storage、kmod-scsi-core|usb-storage sd_mod scsi_mod
+UAS 高速存储|kmod-usb-storage-uas|uas
+Android USB 共享（RNDIS）|kmod-usb-net-rndis|usbnet rndis_host cdc_ether
+Android / 网卡（NCM）|kmod-usb-net-cdc-ncm|usbnet cdc_ncm
+USB 网络（ECM）|kmod-usb-net-cdc-ether|usbnet cdc_ether
+iPhone USB 共享|kmod-usb-net-ipheth、usbmuxd、libimobiledevice|ipheth
+Realtek USB 网卡|kmod-usb-net-rtl8152|r8152
+ext4 文件系统|固件内置 / kmod-fs-ext4|ext4
+NTFS 文件系统|kmod-fs-ntfs3|ntfs3
+exFAT 文件系统|kmod-fs-exfat|exfat
+FAT / FAT32 文件系统|kmod-fs-vfat|vfat
+CAPS
+    json_close_array
+    json_add_object wan
+    json_add_boolean configured "$([ "$(uci -q get network.usbwan.usb_manager)" = 1 ] && echo 1 || echo 0)"
+    json_add_string device "$(uci -q get network.usbwan.device)"
+    json_add_string disabled "$(uci -q get network.usbwan.disabled)"
+    json_add_string metric "$(uci -q get network.usbwan.metric)"
+    raw=$(ubus -S call network.interface.usbwan status 2>/dev/null)
+    json_add_boolean up "$([ "$(printf '%s' "$raw" | jsonfilter -e '@.up' 2>/dev/null)" = true ] && echo 1 || echo 0)"
+    json_add_string address "$(printf '%s' "$raw" | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)"
+    json_close_object
+    json_dump
+}
+managed() {
+    [ "$(uci -q get network.usbwan)" = interface ] &&
+        [ "$(uci -q get network.usbwan.usb_manager)" = 1 ]
+}
+device_free() {
+    local s ports
+    for s in $(uci -q show network | sed -n 's/^network\.\([^.=]*\)=interface$/\1/p'); do
+        [ "$s" = usbwan ] && managed && continue
+        case " $(uci -q get "network.$s.device") $(uci -q get "network.$s.ifname") " in
+            *" $1 "*) return 1;;
+        esac
+    done
+    # Match list members even if UCI stores multiple bridge ports in one value.
+    ports=$(uci -q show network | sed -n "s/^network\.[^.]*\.ports='\(.*\)'$/\1/p")
+    case " $(printf '%s' "$ports" | tr '\n' ' ') " in *" $1 "*) return 1;; esac
+    return 0
+}
+change() {
+    local method="$1" input device metric wantype wantarget wanmetric s
+    IFS= read -r input
+    json_load "$input" || { reply 0 '请求格式错误'; return; }
+    json_get_var device device
+    json_get_var metric metric
+    [ -z "$(uci changes network)$(uci changes firewall)" ] || {
+        reply 0 '网络或防火墙有尚未应用的更改，请先到对应页面处理。'; return;
+    }
+    if [ -n "$(uci -q get network.usbwan)" ] && ! managed; then
+        reply 0 'usbwan 已被其他配置使用，请在网络接口页面处理。'; return
+    fi
+    if [ "$method" = configure ]; then
+        is_usb_net "$device" || { reply 0 '未检测到可用的 USB 网卡，请先连接手机并开启 USB 共享，或补齐驱动。'; return; }
+        device_free "$device" || { reply 0 '该设备已属于其他接口或网桥，无法在此接管。'; return; }
+        case "$metric" in ''|*[!0-9]*) reply 0 '优先级必须是 100–900 的整数。'; return;; esac
+        [ "${#metric}" -le 3 ] && [ "$metric" -ge 100 ] && [ "$metric" -le 900 ] || {
+            reply 0 '优先级必须是 100–900 的整数。'; return;
+        }
+        wanmetric=$(uci -q get network.wan.metric); wanmetric=${wanmetric:-0}
+        case "$wanmetric" in *[!0-9]*) reply 0 '当前 WAN 优先级无法读取。'; return;; esac
+        [ "$metric" -gt "$wanmetric" ] || { reply 0 'USB 优先级数字需要大于现有 WAN，保持现有 WAN 优先。'; return; }
+        # Locate the existing WAN zone by name, never assume an index.
+        s=
+        for wantype in $(uci -q show firewall | sed -n 's/^firewall\.\([^.=]*\)=zone$/\1/p'); do
+            [ "$(uci -q get "firewall.$wantype.name")" = wan ] && s="$wantype"
+        done
+        [ -n "$s" ] && [ "$(uci -q get "firewall.$s.input")" = REJECT ] &&
+            [ "$(uci -q get "firewall.$s.masq")" = 1 ] || {
+            reply 0 '当前 WAN 防火墙配置不适合直接添加 USB 出口，请到网络接口页面设置。'; return;
+        }
+        for wantype in $(uci -q show firewall | sed -n 's/^firewall\.\([^.=]*\)=zone$/\1/p'); do
+            [ "$wantype" = "$s" ] && continue
+            case " $(uci -q get "firewall.$wantype.network") " in *' usbwan '*)
+                reply 0 'usbwan 已分配到其他防火墙区域。'; return;;
+            esac
+        done
+    else
+        managed || { reply 0 '尚未创建 USB 上网接口。'; return; }
+        if [ "$method" = reconnect ]; then
+            device=$(uci -q get network.usbwan.device)
+            is_usb_net "$device" && device_free "$device" || { reply 0 '配置的 USB 网卡未连接或已被其他接口使用。'; return; }
+        fi
+    fi
+    mkdir /var/lock/tr3600-usb.lock 2>/dev/null || { reply 0 '已有 USB 配置操作正在进行。'; return; }
+    trap 'rmdir /var/lock/tr3600-usb.lock' EXIT
+    mkdir -p /etc/tr3600-usb
+    chmod 700 /etc/tr3600-usb
+    cp -p /etc/config/network /etc/tr3600-usb/last-network &&
+        cp -p /etc/config/firewall /etc/tr3600-usb/last-firewall || {
+        reply 0 '无法保存修改前配置，操作已取消。'; return;
+    }
+    if [ "$method" = configure ]; then
+        if ! uci -q batch <<EOF
+set network.usbwan=interface
+set network.usbwan.usb_manager='1'
+set network.usbwan.proto='dhcp'
+set network.usbwan.device='$device'
+set network.usbwan.metric='$metric'
+set network.usbwan.ipv6='0'
+set network.usbwan.peerdns='1'
+set network.usbwan.defaultroute='1'
+set network.usbwan.auto='1'
+set network.usbwan.disabled='0'
+EOF
+        then
+            uci revert network; reply 0 '无法创建 USB 接口，已撤销更改。'; return
+        fi
+        # Delete this exact list member only, leaving WAN/WAN6 intact.
+        uci -q del_list "firewall.$s.network=usbwan" || true
+        uci add_list "firewall.$s.network=usbwan" || {
+            uci revert network; uci revert firewall; reply 0 '无法添加防火墙出口，已撤销更改。'; return;
+        }
+    elif [ "$method" = disable ]; then
+        uci set network.usbwan.disabled=1 || { reply 0 '无法停用 USB 接口。'; return; }
+    else
+        uci set network.usbwan.disabled=0 || { reply 0 '无法启用 USB 接口。'; return; }
+    fi
+    if ! fw4 check >/tmp/tr3600-usb-fwcheck.log 2>&1; then
+        uci revert network; uci revert firewall
+        reply 0 '防火墙校验失败，已撤销本次配置。'; return
+    fi
+    if ! uci commit network || ! uci commit firewall; then
+        cp -p /etc/tr3600-usb/last-network /etc/config/network
+        cp -p /etc/tr3600-usb/last-firewall /etc/config/firewall
+        uci revert network; uci revert firewall
+        reply 0 '保存失败，已恢复修改前配置。'; return
+    fi
+    if ! ubus call network reload >/dev/null 2>&1; then
+        cp -p /etc/tr3600-usb/last-network /etc/config/network
+        cp -p /etc/tr3600-usb/last-firewall /etc/config/firewall
+        ubus call network reload >/dev/null 2>&1
+        reply 0 '应用失败，已恢复修改前配置。'; return
+    fi
+    if [ "$method" = configure ]; then /etc/init.d/firewall reload >/dev/null 2>&1; fi
+    if [ "$method" = disable ]; then ifdown usbwan >/dev/null 2>&1; else ifup usbwan >/dev/null 2>&1; fi
+    logger -t tr3600-usb "$method USB WAN"
+    reply 1 '已保存并应用 USB 上网配置。地址获取结果请查看实时状态。'
+}
+case "$1" in
+    list) echo '{"status":{},"configure":{"device":"","metric":""},"disable":{},"reconnect":{}}';;
+    call) case "$2" in
+        status) status;;
+        configure|disable|reconnect) change "$2";;
+        *) reply 0 '不支持的操作';;
+    esac;;
+    *) exit 1;;
+esac

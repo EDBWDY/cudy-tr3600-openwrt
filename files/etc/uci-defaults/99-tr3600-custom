@@ -1,0 +1,22 @@
+#!/bin/sh
+# No passwords, wireless keys, subscriptions or VPN identities in this image.
+uci -q set system.@system[0].hostname='CU-TR3600'
+uci -q set luci.main.lang='zh_cn'
+uci -q set luci.main.mediaurlbase='/luci-static/argon'
+uci -q set tr3600_fan.main.mode='auto'
+uci -q set openclash.config.enable='0'
+uci -q set openclash.config.core_type='Meta'
+uci -q set openclash.config.core_version='linux-arm64'
+uci -q set zerotier.global.enabled='0'
+uci -q commit system
+uci -q commit luci
+uci -q commit tr3600_fan
+uci -q commit openclash
+uci -q commit zerotier
+mkdir -p /etc/openclash/config /etc/openclash/backup /etc/openclash/core
+/etc/init.d/openclash disable
+/etc/init.d/zerotier disable
+/etc/init.d/https-dns-proxy disable
+/etc/init.d/tr3600-fan enable
+sed -i 's/>{{ hostname }}<\/a>/>Openwrt<\/a>/' /usr/share/ucode/luci/template/themes/argon/header.ut
+exit 0

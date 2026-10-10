@@ -1,0 +1,5 @@
+#!/bin/sh
+case "$1" in
+  list) echo '{"status":{},"save":{"mac":"","alias":"","blocked":false,"upload":0,"download":0}}';;
+  call) exec /usr/libexec/tr3600-clients "$2";;
+esac

@@ -1,0 +1,17 @@
+{
+  "luci-app-tr3600-fan": {
+    "description": "TR3600 fan status and cooling presets",
+    "read": {
+      "ubus": { "file": [ "exec" ] },
+      "file": { "/usr/libexec/tr3600-fan status": [ "exec" ] }
+    },
+    "write": {
+      "ubus": { "file": [ "exec" ] },
+      "file": {
+        "/usr/libexec/tr3600-fan set auto": [ "exec" ],
+        "/usr/libexec/tr3600-fan set boost": [ "exec" ],
+        "/usr/libexec/tr3600-fan set full": [ "exec" ]
+      }
+    }
+  }
+}

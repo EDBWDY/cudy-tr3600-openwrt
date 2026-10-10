@@ -1,0 +1,250 @@
+name: TR3600 USB custom firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      resume_run:
+        description: 'Optional previous run ID with a preserved checkpoint'
+        required: false
+        default: ''
+      resume_artifact:
+        description: 'Exact checkpoint artifact name from that run'
+        required: false
+        default: 'checkpoint-firmware-1'
+      reuse_complete_toolchain:
+        description: 'Directly use complete toolchain checkpoint with mandatory reuse check'
+        type: boolean
+        default: false
+      refresh_customizations:
+        description: 'Reapply customizations from an exact matching checkpoint'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: tr3600-usb-custom
+  cancel-in-progress: false
+
+jobs:
+  tools:
+    name: Tools and cross compiler
+    if: inputs.resume_run == ''
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout build recipe
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Prepare Linux build environment
+        run: bash scripts/environment.sh
+      - name: Validate custom plugin and build scripts
+        run: |
+          python3 -m py_compile scripts/*.py
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          for script in scripts/*.sh; do bash -n "$script"; done
+          bash -n package/luci-app-tr3600-fan/files/usr/libexec/tr3600-fan
+          bash -n package/luci-app-tr3600-fan/files/etc/init.d/tr3600-fan
+          bash -n package/luci-app-tr3600-usb/files/usr/libexec/rpcd/tr3600.usb
+          bash -n files/etc/uci-defaults/99-tr3600-custom
+          node --check package/luci-app-tr3600-fan/files/www/luci-static/resources/view/system/tr3600-fan.js
+          node --check package/luci-app-tr3600-usb/files/www/luci-static/resources/view/system/tr3600-usb.js
+          node --check zerotier-config.openwrt.js
+      - name: Prepare pinned source and validate requested configuration
+        run: python3 scripts/prepare.py
+      - name: Download package sources
+        working-directory: openwrt
+        run: make -j8 download V=s
+      - name: Compile tools and cross compiler
+        run: bash scripts/compile-stage.sh tools
+      - name: Preserve complete build tree
+        if: always() && hashFiles('openwrt/.config') != ''
+        run: python3 scripts/checkpoint.py save checkpoint-tools
+      - name: Upload build checkpoint
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: checkpoint-tools-${{ github.run_attempt }}
+          path: checkpoint-tools/
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 3
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-diagnostics-tools-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            build-tools.log
+            compile-tools.status
+            openwrt/.config
+            openwrt/logs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+  rust:
+    name: Rust and LLVM toolchain
+    needs: tools
+    if: always() && !inputs.reuse_complete_toolchain && (needs.tools.result == 'success' || (needs.tools.result == 'skipped' && inputs.resume_run != ''))
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout build recipe
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Prepare Linux build environment
+        run: bash scripts/environment.sh
+      - name: Download current tools checkpoint
+        if: inputs.resume_run == ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: checkpoint-tools-${{ github.run_attempt }}
+          path: resume
+      - name: Download previous checkpoint
+        if: inputs.resume_run != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ${{ inputs.resume_artifact }}
+          run-id: ${{ inputs.resume_run }}
+          github-token: ${{ github.token }}
+          path: resume
+      - name: Restore preserved build tree
+        run: python3 scripts/checkpoint.py restore resume
+      - name: Download package sources
+        working-directory: openwrt
+        run: make -j8 download V=s
+      - name: Compile Rust and LLVM toolchain
+        # The migration is only for old checkpoint format that excluded dl.
+        # make download above must succeed before using those identical inputs.
+        run: |
+          python3 scripts/ensure-rust-source.py
+          python3 scripts/restore-download-times.py
+          bash scripts/compile-stage.sh rust
+      - name: Preserve complete build tree
+        if: always() && hashFiles('openwrt/.config') != ''
+        run: python3 scripts/checkpoint.py save checkpoint-rust
+      - name: Upload build checkpoint
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: checkpoint-rust-${{ github.run_attempt }}
+          path: checkpoint-rust/
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 3
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-diagnostics-rust-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            build-rust.log
+            compile-rust.status
+            openwrt/.config
+            openwrt/logs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+  firmware:
+    name: Firmware, kernel modules and verification
+    needs: rust
+    if: always() && (needs.rust.result == 'success' || (inputs.reuse_complete_toolchain && inputs.resume_run != '' && needs.rust.result == 'skipped'))
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout build recipe
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Prepare Linux build environment
+        run: bash scripts/environment.sh
+      - name: Validate customization inputs and privacy
+        run: |
+          python3 -m py_compile scripts/*.py
+          python3 scripts/privacy_audit.py
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          for script in scripts/*.sh; do bash -n "$script"; done
+          bash -n files/etc/uci-defaults/99-tr3600-custom
+          for script in $(find package -name '*.js'); do node --check "$script"; done
+      - name: Download Rust checkpoint
+        if: ${{ !inputs.reuse_complete_toolchain }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: checkpoint-rust-${{ github.run_attempt }}
+          path: resume
+      - name: Download complete existing toolchain
+        if: inputs.reuse_complete_toolchain
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ${{ inputs.resume_artifact }}
+          run-id: ${{ inputs.resume_run }}
+          github-token: ${{ github.token }}
+          path: resume
+      - name: Restore preserved build tree
+        run: |
+          if [[ '${{ inputs.refresh_customizations }}' == 'true' ]]; then
+            python3 scripts/checkpoint.py restore resume --refresh-customizations
+          else
+            python3 scripts/checkpoint.py restore resume
+          fi
+      - name: Download package sources
+        working-directory: openwrt
+        run: make -j8 download V=s
+      - name: Compile firmware and kernel modules
+        id: compile
+        run: |
+          python3 scripts/ensure-rust-source.py
+          python3 scripts/restore-download-times.py
+          if [[ '${{ inputs.reuse_complete_toolchain }}' == 'true' ]]; then
+            python3 -m unittest discover -s scripts -p 'test_*.py'
+            python3 scripts/check-toolchain-reuse.py
+          fi
+          bash scripts/compile-stage.sh firmware
+      - name: Collect produced firmware before verification
+        if: always() && hashFiles('openwrt/.config') != ''
+        run: python3 scripts/collect-unverified.py
+      - name: Upload produced firmware before verification
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tr3600-unverified-${{ github.run_number }}-${{ github.run_attempt }}
+          path: unverified-artifacts/
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 30
+      - name: Verify firmware and collect matching packages
+        run: python3 scripts/verify.py
+      - name: Upload verified firmware
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tr3600-usb-custom-${{ github.run_number }}
+          path: artifacts/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Preserve complete or unfinished firmware build
+        if: always() && hashFiles('openwrt/.config') != ''
+        run: python3 scripts/checkpoint.py save checkpoint-firmware
+      - name: Upload firmware checkpoint for later reuse
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: checkpoint-firmware-${{ github.run_attempt }}
+          path: checkpoint-firmware/
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 3
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-diagnostics-firmware-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            build-firmware.log
+            compile-firmware.status
+            toolchain-reuse.log
+            toolchain-reuse.json
+            customizations-refresh.json
+            openwrt/.config
+            openwrt/logs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14

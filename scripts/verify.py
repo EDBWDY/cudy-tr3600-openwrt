@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Fail the build if the deliverables do not contain the requested features."""
+import hashlib
+import json
+import shutil
+import subprocess
+import tarfile
+from pathlib import Path
+from feature_requirements import requested_packages, verify_dnsmasq_nftset
+from privacy_audit import audit_source, audit_image
+from image_extraction import extract_for_audit
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / 'openwrt'
+OUT = ROOT / 'artifacts'
+OUT.mkdir(exist_ok=True)
+source_privacy = audit_source(ROOT)
+target = SRC / 'bin/targets/mediatek/filogic'
+images = list(target.glob('*cudy_tr3600-v1*sysupgrade.bin'))
+if len(images) != 1:
+    raise RuntimeError(f'Expected exactly one TR3600 sysupgrade image: {images}')
+image = images[0]
+with tarfile.open(image) as archive:
+    names = archive.getnames()
+    prefix = 'sysupgrade-cudy_tr3600-v1/'
+    if not all(prefix + entry in names for entry in ['CONTROL', 'kernel', 'root']):
+        raise RuntimeError('Incorrect sysupgrade board archive layout')
+manifest = image.with_name(image.name.replace('-squashfs-sysupgrade.bin', '.manifest'))
+if not manifest.exists():
+    matches = list(target.glob('*cudy_tr3600-v1*.manifest'))
+    if len(matches) != 1:
+        raise RuntimeError(f'Missing unique device manifest: {matches}')
+    manifest = matches[0]
+packages = {}
+for line in manifest.read_text().splitlines():
+    if line.strip():
+        parts = line.split()
+        version = parts[2:] if len(parts) > 1 and parts[1] == '-' else parts[1:]
+        packages[parts[0]] = ' '.join(version)
+required, build_options = requested_packages(
+    (ROOT / 'config.seed').read_text(), (SRC / '.config').read_text())
+missing = [name for name in required if name not in packages]
+if missing:
+    raise RuntimeError(f'Requested packages missing from firmware manifest: {missing}')
+kernel = packages.get('kernel', '')
+if not kernel.startswith('6.12.94'):
+    raise RuntimeError(f'Unexpected kernel version: {kernel}')
+metadata_path = OUT / 'sysupgrade-metadata.json'
+subprocess.run([str(SRC / 'staging_dir/host/bin/fwtool'), '-i', str(metadata_path), str(image)], check=True)
+metadata = json.loads(metadata_path.read_text())
+if 'cudy,tr3600-v1' not in metadata.get('supported_devices', []):
+    raise RuntimeError(f'Incorrect device metadata: {metadata}')
+if image.stat().st_size > 237824 * 1024:
+    raise RuntimeError('Firmware exceeds the TR3600 device image size limit')
+audit = ROOT / 'image-audit'
+audit.mkdir()
+with tarfile.open(image) as archive:
+    with archive.extractfile(prefix + 'root') as source, (audit / 'root.squashfs').open('wb') as output:
+        shutil.copyfileobj(source, output)
+# The audit reads ordinary files; recreating /dev/console requires root and is
+# unnecessary. Exclude that exact device node, keeping every other error fatal.
+extract_for_audit(SRC / 'staging_dir/host/bin/unsquashfs4', audit / 'root.squashfs', audit / 'root')
+rootfs = audit / 'root'
+dnsmasq_features = verify_dnsmasq_nftset((rootfs / 'usr/sbin/dnsmasq').read_bytes())
+if 'nftables-json' not in packages:
+    raise RuntimeError('dnsmasq nftset dependency nftables-json is missing')
+required_files = [
+    'usr/libexec/tr3600-clients', 'usr/libexec/rpcd/tr3600.clients',
+    'usr/share/tr3600-clients/engine.uc', 'etc/init.d/tr3600-clients',
+    'usr/share/luci/menu.d/luci-app-tr3600-clients.json',
+    'usr/share/rpcd/acl.d/luci-app-tr3600-clients.json',
+    'www/luci-static/resources/view/status/tr3600-clients.js',
+    'www/luci-static/resources/view/status/tr3600-clients-v1_0_14.js',
+    'www/luci-static/resources/tr3600-clients.css',
+    'usr/libexec/tr3600-fan', 'usr/libexec/rpcd/tr3600.usb',
+    'etc/init.d/tr3600-fan', 'etc/config/tr3600_fan',
+    'usr/share/luci/menu.d/luci-app-tr3600-fan.json',
+    'usr/share/luci/menu.d/luci-app-tr3600-usb.json',
+    'usr/share/rpcd/acl.d/luci-app-tr3600-fan.json',
+    'usr/share/rpcd/acl.d/luci-app-tr3600-usb.json',
+    'www/luci-static/resources/view/system/tr3600-fan.js',
+    'www/luci-static/resources/view/system/tr3600-usb.js',
+    'www/luci-static/resources/view/system/tr3600-usb-v1_1_1.js',
+    'www/luci-static/resources/tr3600_usb_status.js',
+    'www/luci-static/resources/view/status/tr3600_usb.js',
+    'www/luci-static/resources/view/status/include/35_tr3600_usb.js',
+    'www/luci-static/resources/view/samba4-tr3600-v2.js',
+    'www/luci-static/resources/view/system/mounts-tr3600-v1.js',
+    'usr/share/luci/menu.d/luci-app-https-dns-proxy.json',
+    'www/luci-static/resources/view/https-dns-proxy/overview.js',
+    'usr/libexec/rpcd/luci.https-dns-proxy',
+    'etc/init.d/https-dns-proxy', 'usr/sbin/https-dns-proxy',
+    'etc/openclash/core/clash_meta', 'etc/uci-defaults/99-tr3600-custom'
+]
+for name in required_files:
+    if not (rootfs / name).is_file():
+        raise RuntimeError(f'Required installed file is missing: {name}')
+for name in ['https-dns-proxy', 'libcares', 'libev']:
+    if name not in packages:
+        raise RuntimeError('DoH backend dependency missing: ' + name)
+for package in ['luci-app-tr3600-usb', 'luci-app-tr3600-fan', 'luci-app-tr3600-clients']:
+    source_files = ROOT / 'package' / package / 'files'
+    for file in source_files.rglob('*'):
+        if file.is_file() and (rootfs / file.relative_to(source_files)).read_bytes() != file.read_bytes():
+            raise RuntimeError('Installed custom plugin differs from current source: ' + str(file))
+samba = json.loads((rootfs / 'usr/share/luci/menu.d/luci-app-samba4.json').read_text())['admin/services/samba4']
+if samba['title'] != 'Samba' or samba['action']['path'] != 'samba4-tr3600-v2':
+    raise RuntimeError('Samba menu presentation update is missing')
+mount_menu = json.loads((rootfs / 'usr/share/luci/menu.d/luci-mod-system.json').read_text())
+if mount_menu['admin/system/mounts']['action']['path'] != 'system/mounts-tr3600-v1':
+    raise RuntimeError('Mount page presentation update is missing')
+from mount_labels import BUTTON_LABEL, DESCRIPTION
+mount_script = (rootfs / 'www/luci-static/resources/view/system/mounts-tr3600-v1.js').read_text()
+if BUTTON_LABEL not in mount_script or DESCRIPTION not in mount_script:
+    raise RuntimeError('Clarified mount action label is missing')
+defaults = (rootfs / 'etc/uci-defaults/99-tr3600-custom').read_text()
+if '/etc/init.d/https-dns-proxy disable' not in defaults:
+    raise RuntimeError('DoH must remain disabled at first boot')
+image_privacy = audit_image(rootfs)
+(OUT / 'privacy-verification.json').write_text(json.dumps({
+    'source': source_privacy, 'image': image_privacy,
+    'doh_first_boot': 'disabled',
+}, indent=2) + '\n')
+core_header = (rootfs / 'etc/openclash/core/clash_meta').read_bytes()[:20]
+if core_header[:4] != b'\x7fELF' or int.from_bytes(core_header[18:20], 'little') != 183:
+    raise RuntimeError('Installed mihomo is not an AArch64 ELF binary')
+for binary in ['tailscale', 'tailscaled', 'zerotier-one', 'usbmuxd', 'idevicepair', 'smbd']:
+    if not any((rootfs / directory / binary).exists() for directory in ['usr/bin', 'usr/sbin', 'bin', 'sbin']):
+        raise RuntimeError(f'Required VPN/storage/pairing executable missing: {binary}')
+module_names = {path.name for path in (rootfs / 'lib/modules').rglob('*.ko')}
+required_modules = ['usb-storage.ko', 'uas.ko', 'rndis_host.ko', 'cdc_ether.ko', 'cdc_ncm.ko', 'ipheth.ko', 'ntfs3.ko', 'exfat.ko', 'vfat.ko']
+if any(name not in module_names for name in required_modules):
+    raise RuntimeError(f'USB/filesystem modules missing: {set(required_modules) - module_names}')
+for path in target.iterdir():
+    if path.is_file() and (path.name.endswith(('.bin', '.manifest', '.buildinfo', '.json')) or path.name == 'sha256sums'):
+        shutil.copyfile(path, OUT / path.name)
+shutil.copyfile(SRC / '.config', OUT / 'config.full')
+shutil.copyfile(ROOT / 'config.seed', OUT / 'config.seed')
+shutil.copyfile(ROOT / 'sources.json', OUT / 'sources.json')
+shutil.copyfile(ROOT / 'patches/cudy-tr3600-v1-fixes.patch', OUT / 'hardware-fixes.patch')
+shutil.copyfile(SRC / 'feeds/packages/lang/rust/Makefile', OUT / 'rust-host.Makefile')
+
+# Archive all built APK/IPK packages, including this image's exact kernel modules.
+with tarfile.open(OUT / 'same-build-packages.tar.gz', 'w:gz') as archive:
+    for base in [SRC / 'bin/packages', target / 'packages']:
+        if base.exists():
+            archive.add(base, arcname=str(base.relative_to(SRC / 'bin')))
+verification = {
+    'board': 'cudy,tr3600-v1', 'kernel': kernel,
+    'required_packages': required, 'required_build_options': build_options,
+    'dnsmasq_compile_options': dnsmasq_features, 'verified_package_count': len(packages),
+    'image_bytes': image.stat().st_size,
+    'image_sha256': hashlib.sha256(image.read_bytes()).hexdigest(),
+    'installed_files_checked': required_files, 'required_modules_checked': required_modules,
+    'validation': 'Archive, metadata, device manifest, installed plugin/core files and USB modules checked; not yet flashed or runtime tested.'
+}
+(OUT / 'verification.json').write_text(json.dumps(verification, indent=2) + '\n')
+hashes = []
+for path in sorted(OUT.iterdir()):
+    if path.is_file() and path.name != 'artifact-sha256sums':
+        digest = hashlib.sha256()
+        with path.open('rb') as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(block)
+        hashes.append(f'{digest.hexdigest()}  {path.name}')
+(OUT / 'artifact-sha256sums').write_text('\n'.join(hashes) + '\n')
+print(json.dumps(verification, indent=2))

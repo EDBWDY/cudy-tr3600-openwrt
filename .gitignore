@@ -1,0 +1,15 @@
+openwrt/
+vendor/
+image-audit/
+artifacts/
+build.log
+__pycache__/
+*.pyc
+*.bin
+*.apk
+*.ipk
+*.tar.gz
+*.key
+*.pem
+*.yaml
+!*.yml

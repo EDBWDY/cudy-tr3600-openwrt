@@ -1,0 +1,7 @@
+{
+  "luci-app-tr3600-usb": {
+    "description": "USB inventory and isolated USB WAN management",
+    "read": { "ubus": { "tr3600.usb": [ "status" ] } },
+    "write": { "ubus": { "tr3600.usb": [ "configure", "disable", "reconnect" ] } }
+  }
+}
