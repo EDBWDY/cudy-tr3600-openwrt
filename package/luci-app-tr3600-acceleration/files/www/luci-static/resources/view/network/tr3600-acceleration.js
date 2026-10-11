@@ -31,6 +31,7 @@ return view.extend({
             self.badges[k].textContent = !data.supported[k] ? '不支持' : pending ? '待重启' : enabled ? '已开启' : '已关闭';
             self.badges[k].className = 'acc-badge ' + (pending ? 'acc-pending' : enabled ? 'acc-on' : 'acc-off');
             self.runtime[k].textContent = '当前状态 · ' + (enabled ? '开启' : '关闭');
+            self.runtime[k].hidden = !pending;
         });
         this.summary.textContent = data.runtime.hardware ? '硬件加速运行中' : data.runtime.software ? '软件加速运行中' : '常规转发';
         this.count.textContent = data.bindings == null ? '—' : String(data.bindings);
@@ -78,7 +79,7 @@ return view.extend({
         this.notes = E('div', { 'class': 'acc-notes' });
         this.error = E('div', { 'class': 'acc-error', 'role': 'alert' });
         this.dirty = E('span', { 'class': 'acc-muted' });
-        function row(key, icon, title, subtitle, detail) {
+        function row(key, title, subtitle) {
             var input = self.inputs[key] = E('input', { 'type': 'checkbox', 'aria-label': title, 'change': function() {
                 if (key === 'hardware' && input.checked) self.inputs.software.checked = true;
                 if (key === 'software' && !input.checked) self.inputs.hardware.checked = false;
@@ -87,28 +88,28 @@ return view.extend({
             var badge = self.badges[key] = E('span', { 'class': 'acc-badge' });
             var runtime = self.runtime[key] = E('span', { 'class': 'acc-muted acc-runtime' });
             return E('section', { 'class': 'acc-card' }, [
-                E('div', { 'class': 'acc-icon', 'aria-hidden': 'true' }, icon),
                 E('div', { 'class': 'acc-info' }, [
-                    E('div', { 'class': 'acc-title-row' }, [E('h3', {}, title), badge]),
+                    E('h3', {}, title),
                     E('div', { 'class': 'acc-subtitle' }, subtitle),
-                    E('div', { 'class': 'acc-detail' }, detail), runtime
+                    runtime
                 ]),
-                E('label', { 'class': 'acc-switch' }, [input, E('span', { 'class': 'acc-track' }), E('span', { 'class': 'acc-sr' }, title)])
+                E('div', { 'class': 'acc-control' }, [badge, E('label', { 'class': 'acc-switch' }, [input, E('span', { 'class': 'acc-track' }), E('span', { 'class': 'acc-sr' }, title)])])
             ]);
         }
         this.apply = E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() { return self.applySettings(); } }, '保存并应用');
         this.reset = E('button', { 'class': 'cbi-button', 'click': function() { self.error.textContent = ''; self.update(self.data, true); } }, '撤销改动');
         this.root = E('div', { 'class': 'acc-page' }, [
-            E('link', { 'rel': 'stylesheet', 'href': L.resource('tr3600-acceleration.css?v=1.0.0') }),
-            E('div', { 'class': 'acc-summary' }, [
-                E('div', {}, [E('h2', {}, '硬件加速'), this.summary]),
-                E('div', { 'class': 'acc-metric' }, [this.count, this.countLabel])
-            ]),
-            row('software', 'SW', '软件流量加速', 'Software flow offload', '缩短转发路径，减轻 CPU 负担'),
-            row('hardware', 'HW', '硬件流量加速', 'MediaTek PPE', '由硬件处理转发，需要同时开启软件加速'),
-            row('wed', 'Wi-Fi', '无线硬件加速', 'WED', '加速 Wi-Fi 数据传输，修改后重启生效'),
-            this.notes, this.error,
-            E('div', { 'class': 'acc-actions' }, [this.dirty, E('div', {}, [this.reset, this.apply])])
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('tr3600-acceleration.css?v=1.0.1') }),
+            E('div', { 'class': 'acc-heading' }, E('h2', {}, '硬件加速')),
+            E('div', { 'class': 'acc-panel' }, [
+                E('div', { 'class': 'acc-summary' }, [this.summary,
+                    E('div', { 'class': 'acc-metric' }, [this.countLabel, this.count])]),
+                row('software', '软件加速', '减少 CPU 转发开销'),
+                row('hardware', '硬件加速', 'MediaTek PPE'),
+                row('wed', '无线加速', 'WED · 重启后生效'),
+                this.notes, this.error,
+                E('div', { 'class': 'acc-actions' }, [this.dirty, E('div', {}, [this.reset, this.apply])])
+            ])
         ]);
         this.update(data, true);
         poll.add(function() {
