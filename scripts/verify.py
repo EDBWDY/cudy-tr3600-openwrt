@@ -70,7 +70,7 @@ required_files = [
     'usr/share/luci/menu.d/luci-app-tr3600-clients.json',
     'usr/share/rpcd/acl.d/luci-app-tr3600-clients.json',
     'www/luci-static/resources/view/status/tr3600-clients.js',
-    'www/luci-static/resources/view/status/tr3600-clients-v1_0_15.js',
+    'www/luci-static/resources/view/status/tr3600-clients-v1_0_16.js',
     'usr/libexec/tr3600-acceleration', 'usr/libexec/rpcd/tr3600.acceleration',
     'usr/share/tr3600-acceleration/engine.uc',
     'usr/share/luci/menu.d/luci-app-tr3600-acceleration.json',

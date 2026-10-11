@@ -113,9 +113,9 @@ return view.extend({
         this.health = E('div', { 'class': 'cm-health' });
         this.updated = E('span', { 'class': 'cm-muted' });
         this.search = E('input', { 'class': 'cbi-input-text cm-search', 'type': 'search', 'placeholder': '搜索名称、IP 或 MAC', 'input': function() { self.paint(); } });
-        var select = E('select', { 'class': 'cbi-input-select', 'change': function() { self.filter = this.value; self.paint(); } }, [E('option', { value: '' }, '全部设备'), E('option', { value: 'online' }, '在线设备'), E('option', { value: 'blocked' }, '黑名单')]);
+        var select = E('select', { 'class': 'cbi-input-select cm-device-filter', 'aria-label': '筛选设备', 'change': function() { self.filter = this.value; self.paint(); } }, [E('option', { value: '' }, '全部设备'), E('option', { value: 'online' }, '在线设备'), E('option', { value: 'blocked' }, '黑名单')]);
         var root = E('div', { 'class': 'cm-root' }, [
-            E('link', { 'rel': 'stylesheet', 'href': L.resource('tr3600-clients.css') + '?v=1.0.15' }),
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('tr3600-clients.css') + '?v=1.0.16' }),
             E('div', { 'class': 'cm-heading' }, [E('div', {}, [E('h2', {}, '客户端管理'), E('p', { 'class': 'cm-muted' }, '查看连接，管理每台设备的网络使用。')]), this.updated]),
             this.health, this.summary,
             E('div', { 'class': 'cm-toolbar' }, [this.search, select]), this.cards

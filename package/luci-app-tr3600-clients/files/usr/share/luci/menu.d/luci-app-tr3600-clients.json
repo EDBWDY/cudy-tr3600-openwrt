@@ -2,7 +2,7 @@
   "admin/status/tr3600_clients": {
     "title": "客户端管理",
     "order": 2,
-    "action": { "type": "view", "path": "status/tr3600-clients-v1_0_15" },
+    "action": { "type": "view", "path": "status/tr3600-clients-v1_0_16" },
     "depends": { "acl": [ "luci-app-tr3600-clients" ] }
   }
 }

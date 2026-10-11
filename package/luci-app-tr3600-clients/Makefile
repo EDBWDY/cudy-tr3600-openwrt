@@ -1,6 +1,6 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=luci-app-tr3600-clients
-PKG_VERSION:=1.0.15
+PKG_VERSION:=1.0.16
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 include $(INCLUDE_DIR)/package.mk
@@ -23,7 +23,7 @@ endef
 
 define Package/luci-app-tr3600-clients/install
 	$(CP) ./files/* $(1)/
-	$(LN) tr3600-clients.js $(1)/www/luci-static/resources/view/status/tr3600-clients-v1_0_15.js
+	$(LN) tr3600-clients.js $(1)/www/luci-static/resources/view/status/tr3600-clients-v1_0_16.js
 	chmod 0755 $(1)/usr/libexec/tr3600-clients $(1)/usr/libexec/rpcd/tr3600.clients $(1)/etc/init.d/tr3600-clients
 endef
 
