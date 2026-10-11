@@ -99,7 +99,7 @@ core_binary.write_bytes(gzip.decompress(archive))
 core_binary.chmod(0o755)
 
 shutil.copytree(ROOT / 'files', SRC / 'files')
-for package in ['luci-app-tr3600-fan', 'luci-app-tr3600-usb', 'luci-app-tr3600-clients']:
+for package in ['luci-app-tr3600-fan', 'luci-app-tr3600-usb', 'luci-app-tr3600-clients', 'luci-app-tr3600-acceleration']:
     for path in (dest / package / 'files').rglob('*'):
         if path.is_file() and ('init.d' in path.parts or 'libexec' in path.parts):
             path.chmod(0o755)

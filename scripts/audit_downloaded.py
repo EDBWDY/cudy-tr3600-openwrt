@@ -102,7 +102,7 @@ def main():
     for name in required_files:
         if not image_path(name).is_file():
             raise RuntimeError('Actual installed file missing: ' + name)
-    for package in ['luci-app-tr3600-usb', 'luci-app-tr3600-fan', 'luci-app-tr3600-clients']:
+    for package in ['luci-app-tr3600-usb', 'luci-app-tr3600-fan', 'luci-app-tr3600-clients', 'luci-app-tr3600-acceleration']:
         source = RECIPE / 'package' / package / 'files'
         for f in source.rglob('*'):
             if f.is_file() and (root / f.relative_to(source)).read_bytes() != f.read_bytes():

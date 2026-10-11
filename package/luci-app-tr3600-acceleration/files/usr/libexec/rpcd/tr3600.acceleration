@@ -1,0 +1,5 @@
+#!/bin/sh
+case "$1" in
+ list) echo '{"status":{},"save":{"software":false,"hardware":false,"wed":false}}';;
+ call) exec /usr/libexec/tr3600-acceleration "$2";;
+esac

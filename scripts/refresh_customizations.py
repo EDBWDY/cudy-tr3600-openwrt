@@ -42,7 +42,7 @@ def refresh(root):
     shutil.copytree(root / 'files', src / 'files', dirs_exist_ok=True)
     for path in (src / 'files/etc/uci-defaults').iterdir():
         path.chmod(0o755)
-    for package in ['luci-app-tr3600-fan', 'luci-app-tr3600-usb', 'luci-app-tr3600-clients']:
+    for package in ['luci-app-tr3600-fan', 'luci-app-tr3600-usb', 'luci-app-tr3600-clients', 'luci-app-tr3600-acceleration']:
         for path in (src / 'package/custom' / package / 'files').rglob('*'):
             if path.is_file() and ('init.d' in path.parts or 'libexec' in path.parts):
                 path.chmod(0o755)

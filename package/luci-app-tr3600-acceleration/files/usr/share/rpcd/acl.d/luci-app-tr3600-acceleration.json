@@ -1,0 +1,7 @@
+{
+  "luci-app-tr3600-acceleration": {
+    "description": "Acceleration status and settings",
+    "read": { "ubus": { "tr3600.acceleration": [ "status" ] } },
+    "write": { "ubus": { "tr3600.acceleration": [ "save" ] } }
+  }
+}

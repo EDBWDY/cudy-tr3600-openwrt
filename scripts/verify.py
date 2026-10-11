@@ -70,7 +70,14 @@ required_files = [
     'usr/share/luci/menu.d/luci-app-tr3600-clients.json',
     'usr/share/rpcd/acl.d/luci-app-tr3600-clients.json',
     'www/luci-static/resources/view/status/tr3600-clients.js',
-    'www/luci-static/resources/view/status/tr3600-clients-v1_0_14.js',
+    'www/luci-static/resources/view/status/tr3600-clients-v1_0_15.js',
+    'usr/libexec/tr3600-acceleration', 'usr/libexec/rpcd/tr3600.acceleration',
+    'usr/share/tr3600-acceleration/engine.uc',
+    'usr/share/luci/menu.d/luci-app-tr3600-acceleration.json',
+    'usr/share/rpcd/acl.d/luci-app-tr3600-acceleration.json',
+    'www/luci-static/resources/view/network/tr3600-acceleration.js',
+    'www/luci-static/resources/view/network/tr3600-acceleration-v1_0_0.js',
+    'www/luci-static/resources/tr3600-acceleration.css',
     'www/luci-static/resources/tr3600-clients.css',
     'usr/libexec/tr3600-fan', 'usr/libexec/rpcd/tr3600.usb',
     'etc/init.d/tr3600-fan', 'etc/config/tr3600_fan',
@@ -98,7 +105,7 @@ for name in required_files:
 for name in ['https-dns-proxy', 'libcares', 'libev']:
     if name not in packages:
         raise RuntimeError('DoH backend dependency missing: ' + name)
-for package in ['luci-app-tr3600-usb', 'luci-app-tr3600-fan', 'luci-app-tr3600-clients']:
+for package in ['luci-app-tr3600-usb', 'luci-app-tr3600-fan', 'luci-app-tr3600-clients', 'luci-app-tr3600-acceleration']:
     source_files = ROOT / 'package' / package / 'files'
     for file in source_files.rglob('*'):
         if file.is_file() and (rootfs / file.relative_to(source_files)).read_bytes() != file.read_bytes():
