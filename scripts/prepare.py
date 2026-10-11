@@ -42,6 +42,9 @@ customize_package(SRC / 'feeds/luci/applications/luci-app-samba4')
 from mount_labels import customize_package as customize_mounts
 customize_mounts(SRC / 'feeds/luci/modules/luci-mod-system')
 
+from channel_graph import customize_package as customize_channel_graph
+customize_channel_graph(SRC / 'feeds/luci/modules/luci-mod-status')
+
 # Build the same pinned Rust release for this x86_64 host and AArch64 router.
 # Avoid compiling unused LLVM backends and duplicating static LLVM in each tool.
 rust_makefile = SRC / 'feeds/packages/lang/rust/Makefile'

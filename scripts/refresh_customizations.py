@@ -7,6 +7,7 @@ from pathlib import Path
 from samba_labels import customize_package
 from privacy_audit import audit_source
 from mount_labels import customize_package as customize_mounts
+from channel_graph import customize_package as customize_channel_graph
 
 def validate_refresh(metadata, root, current):
     if metadata['workspace'] != str(root.resolve()):
@@ -47,6 +48,7 @@ def refresh(root):
                 path.chmod(0o755)
     customize_package(src / 'feeds/luci/applications/luci-app-samba4')
     customize_mounts(src / 'feeds/luci/modules/luci-mod-system')
+    customize_channel_graph(src / 'feeds/luci/modules/luci-mod-status')
     shutil.copyfile(root / 'config.seed', src / '.config')
     subprocess.run(['make', 'defconfig'], cwd=src, check=True)
     after = (src / '.config').read_text()
