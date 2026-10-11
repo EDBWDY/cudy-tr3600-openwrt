@@ -33,7 +33,7 @@ return view.extend({
             self.runtime[k].textContent = '当前状态 · ' + (enabled ? '开启' : '关闭');
             self.runtime[k].hidden = !pending;
         });
-        this.summary.textContent = data.runtime.hardware ? '硬件加速运行中' : data.runtime.software ? '软件加速运行中' : '常规转发';
+        this.summary.textContent = data.runtime.hardware ? '硬件流量分载运行中' : data.runtime.software ? '软件流量分载运行中' : '常规转发';
         this.count.textContent = data.bindings == null ? '—' : String(data.bindings);
         this.countLabel.textContent = data.bindings === 0 ? '硬件连接 · 等待流量' : '硬件连接';
         var notes = [];
@@ -108,8 +108,8 @@ return view.extend({
             E('div', { 'class': 'acc-panel' }, [
                 E('div', { 'class': 'acc-summary' }, [this.summary,
                     E('div', { 'class': 'acc-metric' }, [this.countLabel, this.count])]),
-                row('software', '软件加速', '减少 CPU 转发开销'),
-                row('hardware', '硬件加速', 'MediaTek PPE'),
+                row('software', '软件流量分载', '减少 CPU 转发开销'),
+                row('hardware', '硬件流量分载', 'MediaTek PPE'),
                 row('wed', '无线加速', 'WED · 重启后生效'),
                 this.notes, this.error,
                 E('div', { 'class': 'acc-actions' }, [this.dirty, E('div', {}, [this.reset, this.apply])])
