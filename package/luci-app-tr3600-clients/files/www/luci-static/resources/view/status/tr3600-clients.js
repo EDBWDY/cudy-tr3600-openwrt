@@ -28,6 +28,8 @@ return view.extend({
         var upload = E('input', { 'class': 'cbi-input-text', 'type': 'number', 'min': 0, 'max': 2500, 'step': 1, 'value': p.upload || 0 });
         var download = E('input', { 'class': 'cbi-input-text', 'type': 'number', 'min': 0, 'max': 2500, 'step': 1, 'value': p.download || 0 });
         var blocked = E('input', { 'type': 'checkbox', 'checked': p.blocked ? true : null });
+        var accelerated = !!(this.data && this.data.offloading && this.data.offloading.active);
+        upload.disabled = download.disabled = blocked.disabled = locked || accelerated;
         var error = E('p', { 'class': 'cm-error' });
         function field(label, input) { return E('label', { 'class': 'cm-field' }, [E('span', {}, label), input]); }
         var button = E('button', { 'class': 'cbi-button cbi-button-positive', 'disabled': locked ? true : null, 'click': function() {
@@ -48,6 +50,7 @@ return view.extend({
                 field('设备别名', alias),
                 E('div', { 'class': 'cm-edit-grid' }, [field('上传上限 · Mbps', upload), field('下载上限 · Mbps', download)]),
                 E('p', { 'class': 'cm-muted' }, '0 表示不限速'),
+                accelerated ? E('p', { 'class': 'cm-muted' }, '关闭流量分载后可设置限速和黑名单') : '',
                 E('label', { 'class': 'cm-block-toggle' }, [blocked, E('span', {}, '加入黑名单，禁止该设备上网')]),
                 error
             ]),
@@ -56,6 +59,7 @@ return view.extend({
     },
     paint: function() {
         var self = this, data = this.data || {}, all = data.clients || [];
+        var accelerated = !!(data.offloading && data.offloading.active);
         if (this.root) this.root.dataset.cmDark = darkTheme() ? 'true' : 'false';
         var expanded = {};
         this.cards.querySelectorAll('details[open]').forEach(function(el) { expanded[el.dataset.mac] = true; });
@@ -75,18 +79,19 @@ return view.extend({
             metric('↑ 总上传', rate(up), '最近一次采样'),
             metric('累计流量', bytes(total), '本次统计服务启动以来')
         );
-        this.health.textContent = data.error || (data.stale ? '数据暂未更新，请检查客户端管理服务。' : '');
+        this.health.textContent = data.error || (data.stale ? '数据暂未更新，请检查客户端管理服务。' :
+            accelerated ? (data.offloading.hardware ? '硬件加速已开启，流量统计可能不准确' : '流量分载已开启，流量统计可能不准确') : '');
         this.health.style.display = this.health.textContent ? '' : 'none';
         this.updated.textContent = data.time ? '每 5 秒更新 · ' + new Date(data.time * 1000).toLocaleTimeString() : '等待采样';
         var cards = filtered.map(function(d) {
-            var p = d.policy, state = p.blocked ? '已拉黑' : d.online ? '在线' : '离线';
+            var p = d.policy, state = p.blocked ? (accelerated ? '已设黑名单' : '已拉黑') : d.online ? '在线' : '离线';
             var name = p.alias || d.name || '未命名设备';
             var ipv4 = (d.addresses || []).filter(function(ip) { return ip.indexOf(':') < 0; });
             var ipv6 = (d.addresses || []).filter(function(ip) { return ip.indexOf(':') >= 0; });
             var tags = [E('span', { 'class': 'cm-pill ' + (p.blocked ? 'cm-red' : d.online ? 'cm-green' : '') }, state)];
             if (d.connection && d.connection !== '未确认') tags.push(E('span', { 'class': 'cm-pill' }, d.connection + (d.protocol ? ' · ' + d.protocol : '')));
             if (d.signal != null) tags.push(E('span', { 'class': 'cm-pill' }, d.signal + ' dBm'));
-            if (p.upload || p.download) tags.push(E('span', { 'class': 'cm-pill cm-purple' }, '限速中'));
+            if (p.upload || p.download) tags.push(E('span', { 'class': 'cm-pill cm-purple' }, accelerated ? '限速可能不生效' : '限速中'));
             return E('article', { 'class': 'cm-card' + (p.blocked ? ' cm-blocked' : '') }, [
                 E('div', { 'class': 'cm-card-head' }, [icon(name.slice(0, 1).toUpperCase()), E('div', { 'class': 'cm-name' }, [E('h3', {}, name), E('small', {}, d.mac)]), E('button', { 'class': 'cm-manage', 'click': function() { self.edit(d); } }, '管理')]),
                 E('div', { 'class': 'cm-tags' }, tags),
@@ -94,7 +99,7 @@ return view.extend({
                 E('details', { 'class': 'cm-ipv6', 'data-mac': d.mac, 'open': expanded[d.mac] || null }, [E('summary', {}, 'IPv6 · ' + ipv6.length + ' 个地址'), E('div', {}, ipv6.length ? ipv6.map(function(ip) { return E('div', {}, ip); }) : '未获取')]),
                 E('div', { 'class': 'cm-traffic' }, [E('div', { 'class': 'cm-speeds' }, [E('div', {}, [E('small', {}, '↓ 下载'), E('strong', {}, rate(d.down_rate)), E('span', {}, '累计下载 ' + bytes(d.down_bytes))]), E('div', {}, [E('small', {}, '↑ 上传'), E('strong', {}, rate(d.up_rate)), E('span', {}, '累计上传 ' + bytes(d.up_bytes))])]),
                 E('div', { 'class': 'cm-traffic-total' }, [E('span', {}, '总流量'), E('strong', {}, bytes((d.down_bytes || 0) + (d.up_bytes || 0)))])]),
-                E('div', { 'class': 'cm-card-foot' }, p.blocked ? '已禁止上网' : (p.upload || p.download ? '上限：↑ ' + (p.upload ? p.upload + ' Mbps' : '不限') + ' / ↓ ' + (p.download ? p.download + ' Mbps' : '不限') : '访问正常 · 不限速'))
+                E('div', { 'class': 'cm-card-foot' }, p.blocked ? (accelerated ? '加速已开启，黑名单可能不生效' : '已禁止上网') : (p.upload || p.download ? (accelerated ? '加速已开启，限速可能不生效' : '上限：↑ ' + (p.upload ? p.upload + ' Mbps' : '不限') + ' / ↓ ' + (p.download ? p.download + ' Mbps' : '不限')) : '访问正常 · 不限速'))
             ]);
         });
         this.cards.replaceChildren.apply(this.cards, cards.length ? cards : [E('div', { 'class': 'cm-empty' }, '没有符合条件的设备')]);
@@ -110,7 +115,7 @@ return view.extend({
         this.search = E('input', { 'class': 'cbi-input-text cm-search', 'type': 'search', 'placeholder': '搜索名称、IP 或 MAC', 'input': function() { self.paint(); } });
         var select = E('select', { 'class': 'cbi-input-select', 'change': function() { self.filter = this.value; self.paint(); } }, [E('option', { value: '' }, '全部设备'), E('option', { value: 'online' }, '在线设备'), E('option', { value: 'blocked' }, '黑名单')]);
         var root = E('div', { 'class': 'cm-root' }, [
-            E('link', { 'rel': 'stylesheet', 'href': L.resource('tr3600-clients.css') + '?v=1.0.14' }),
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('tr3600-clients.css') + '?v=1.0.15' }),
             E('div', { 'class': 'cm-heading' }, [E('div', {}, [E('h2', {}, '客户端管理'), E('p', { 'class': 'cm-muted' }, '查看连接，管理每台设备的网络使用。')]), this.updated]),
             this.health, this.summary,
             E('div', { 'class': 'cm-toolbar' }, [this.search, select]), this.cards

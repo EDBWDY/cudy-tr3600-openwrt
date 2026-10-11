@@ -105,6 +105,11 @@ function counters() {
     for (let e in parse(r.text, {}).nftables || []) if (e.counter) counts[e.counter.name] = e.counter.bytes;
     return { exists: r.code == 0, counts };
 }
+function offloading() {
+    let ruleset = run('nft list ruleset').text;
+    let active = !!match(ruleset, /flow\s+(add|offload)\s+@/);
+    return { active, hardware: active && !!match(ruleset, /flags\s+offload(\s|;|$)/) };
+}
 function rules(dev, clients, exists) {
     let out = exists ? 'delete table ' + TABLE + '\n' : '';
     out += 'table ' + TABLE + ' {\n';
@@ -145,8 +150,7 @@ function tick(dry) {
     if (!match(iface, /^[a-zA-Z0-9_]+$/)) die('无效接口名称');
     let lan = call('network.interface.' + iface, 'status'), dev = lan.l3_device;
     if (!dev || !match(dev, /^[a-zA-Z0-9_.-]{1,15}$/)) die('LAN 接口未就绪');
-    let offload = run('nft list ruleset').text;
-    if (match(offload, /flow\s+(add|offload)\s+@/)) die('流量分载已开启，无法保证统计与限速生效。请先关闭软件/硬件流量分载。');
+    let acceleration = offloading();
     let old = parse(readfile(STATE), {}), now = time();
     let clients = inventory(dev, policy(), old.clients || []);
     let signature = sprintf('%J', map(clients, d => ({mac: d.mac, addresses: d.addresses, policy: d.policy})));
@@ -169,11 +173,11 @@ function tick(dry) {
         if (!dry && run('nft -f ' + sh(RULES) + ' 2>' + ERROR).code != 0) die('规则应用失败：' + (readfile(ERROR) || 'nft error'));
     }
     if (!dry) {
-        writefile(STATE + '.new', sprintf('%J', { ok: true, time: now, since: old.since || now, device: dev, signature, clients }));
+        writefile(STATE + '.new', sprintf('%J', { ok: true, time: now, since: old.since || now, device: dev, signature, clients, offloading: acceleration }));
         rename(STATE + '.new', STATE);
         writefile(ERROR, '');
     }
-    return { ok: true, clients: length(clients), dry: !!dry };
+    return { ok: true, clients: length(clients), dry: !!dry, offloading: acceleration };
 }
 function save(req) {
     let mac = lc(req.mac || '');
@@ -181,6 +185,8 @@ function save(req) {
     if (type(req.alias) != 'string' || length(req.alias) > 64 || match(req.alias, /[[:cntrl:]]/)) die('别名最多 64 字节，不能含控制字符');
     for (let n in ['upload', 'download']) if (type(req[n]) != 'int' && type(req[n]) != 'double' || req[n] < 0 || req[n] > 2500 || (req[n] > 0 && req[n] < 1)) die('限速范围为 1–2500 Mbps，0 表示不限速');
     if (type(req.blocked) != 'bool') die('黑名单参数无效');
+    if (offloading().active && (req.blocked || req.upload || req.download))
+        die('请先关闭流量分载，再设置限速或黑名单');
     let section = 'c' + id(mac), original = readfile('/etc/config/tr3600_clients');
     try {
         uci.set('tr3600_clients', section, 'client');
@@ -201,6 +207,7 @@ try {
         result = parse(readfile(STATE), { ok: false, clients: [], message: '正在读取设备…' });
         result.error = trim(readfile(ERROR) || '');
         result.stale = time() - (result.time || 0) > 20;
+        result.offloading = offloading();
         delete result.signature;
     } else if (mode == 'save') result = save(parse(readfile('/dev/stdin'), {}));
     else if (mode == 'tick' || mode == 'check') result = tick(mode == 'check');
