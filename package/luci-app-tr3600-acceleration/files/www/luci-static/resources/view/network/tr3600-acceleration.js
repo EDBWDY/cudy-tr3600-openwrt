@@ -46,6 +46,9 @@ return view.extend({
         this.changed();
     },
     changed: function() {
+        ['software', 'hardware', 'wed'].forEach(function(k) {
+            this.inputs[k].setAttribute('aria-checked', this.inputs[k].checked ? 'true' : 'false');
+        }, this);
         var dirty = !same(values(this.inputs), this.data.configured);
         this.apply.disabled = this.busy || !L.hasViewPermission() || !dirty;
         this.reset.disabled = this.busy || !dirty;
@@ -80,26 +83,27 @@ return view.extend({
         this.error = E('div', { 'class': 'acc-error', 'role': 'alert' });
         this.dirty = E('span', { 'class': 'acc-muted' });
         function row(key, title, subtitle) {
-            var input = self.inputs[key] = E('input', { 'type': 'checkbox', 'aria-label': title, 'change': function() {
+            var input = self.inputs[key] = E('button', { 'type': 'button', 'class': 'acc-toggle', 'role': 'switch', 'aria-label': title, 'click': function() { input.checked = !input.checked; input.dispatchEvent(new Event('change')); }, 'change': function() {
                 if (key === 'hardware' && input.checked) self.inputs.software.checked = true;
                 if (key === 'software' && !input.checked) self.inputs.hardware.checked = false;
                 self.changed();
-            } });
+            } }, E('span', { 'aria-hidden': 'true' }));
+            input.checked = false;
             var badge = self.badges[key] = E('span', { 'class': 'acc-badge' });
             var runtime = self.runtime[key] = E('span', { 'class': 'acc-muted acc-runtime' });
-            return E('section', { 'class': 'acc-card' }, [
+            return E('div', { 'class': 'acc-card' }, [
                 E('div', { 'class': 'acc-info' }, [
                     E('h3', {}, title),
                     E('div', { 'class': 'acc-subtitle' }, subtitle),
                     runtime
                 ]),
-                E('div', { 'class': 'acc-control' }, [badge, E('label', { 'class': 'acc-switch' }, [input, E('span', { 'class': 'acc-track' }), E('span', { 'class': 'acc-sr' }, title)])])
+                badge, input
             ]);
         }
         this.apply = E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() { return self.applySettings(); } }, '保存并应用');
         this.reset = E('button', { 'class': 'cbi-button', 'click': function() { self.error.textContent = ''; self.update(self.data, true); } }, '撤销改动');
         this.root = E('div', { 'class': 'acc-page' }, [
-            E('link', { 'rel': 'stylesheet', 'href': L.resource('tr3600-acceleration.css?v=1.0.1') }),
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('tr3600-acceleration-v1_0_2.css') }),
             E('div', { 'class': 'acc-heading' }, E('h2', {}, '硬件加速')),
             E('div', { 'class': 'acc-panel' }, [
                 E('div', { 'class': 'acc-summary' }, [this.summary,

@@ -1,6 +1,6 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=luci-app-tr3600-acceleration
-PKG_VERSION:=1.0.1
+PKG_VERSION:=1.0.2
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 include $(INCLUDE_DIR)/package.mk
@@ -19,7 +19,8 @@ endef
 
 define Package/luci-app-tr3600-acceleration/install
 	$(CP) ./files/* $(1)/
-	$(LN) tr3600-acceleration.js $(1)/www/luci-static/resources/view/network/tr3600-acceleration-v1_0_1.js
+	$(LN) tr3600-acceleration.js $(1)/www/luci-static/resources/view/network/tr3600-acceleration-v1_0_2.js
+	$(LN) tr3600-acceleration.css $(1)/www/luci-static/resources/tr3600-acceleration-v1_0_2.css
 	chmod 0755 $(1)/usr/libexec/tr3600-acceleration $(1)/usr/libexec/rpcd/tr3600.acceleration
 endef
 
