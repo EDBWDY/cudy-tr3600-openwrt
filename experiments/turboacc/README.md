@@ -28,6 +28,12 @@ configuration on failure. It preserves unrelated pending firewall edits.
 Detailed apply errors are retained in `/tmp/turboacc-last-error`.
 It does not modify LAN, DHCP, Wi-Fi, DNS, or host identity settings.
 
+Full Cone support is compiled in but defaults to disabled in both the kernel
+and the package configuration. Selecting it in LuCI opens a security warning
+about unsolicited inbound UDP traffic through existing mappings. Canceling
+or dismissing the warning keeps it off. Confirmation selects the feature;
+the normal save-and-apply action is still required to activate it.
+
 ## Reproduce
 
 Run the bounded **TR3600 acceleration backend compile probe** workflow on

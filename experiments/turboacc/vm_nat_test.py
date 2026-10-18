@@ -123,6 +123,9 @@ def main():
     server_process=subprocess.Popen(['ip','netns','exec','external',sys.executable,__file__,'server'])
     time.sleep(0.5)
     network_hash=hashlib.sha256(Path('/etc/config/network').read_bytes()).hexdigest()
+    assert Path('/proc/sys/net/netfilter/nf_conntrack_nat_mode').read_text().strip()=='0'
+    assert run('uci','-q','get','turboacc.config.fullcone').stdout.strip()=='0'
+    results['fullcone_kernel_and_package_default_disabled']=True
     configuration(0,0,'reno'); before=apply()
     assert before['tcp_congestion_control']=='reno' and before['software_rules_active']
     assert before['fullcone_mode']==0
