@@ -135,6 +135,11 @@ def wed_mt76_dependency_check():
         raise RuntimeError('Backports checksum mismatch')
     run(['tar', '-xf', bp_archive], BUILD)
     bp = BUILD / ('backports-' + LOCK['backports']['version'])
+    ow_archive = download('https://codeload.github.com/openwrt/openwrt/tar.gz/' + LOCK['openwrt_commit'], BUILD / 'openwrt.tar.gz')
+    run(['tar', '-xf', ow_archive], BUILD)
+    ow = BUILD / ('openwrt-' + LOCK['openwrt_commit'])
+    for directory in ['build', 'subsys']:
+        run(['sh', ow / 'scripts/patch-kernel.sh', bp, ow / 'package/kernel/mac80211/patches' / directory], BUILD)
     (bp / 'defconfig').write_text('CPTCFG_CFG80211=m\nCPTCFG_MAC80211=m\nCPTCFG_WLAN=y\n')
     flags = ['ARCH=arm64', 'CROSS_COMPILE=aarch64-linux-gnu-', 'KLIB_BUILD=' + str(kernel), 'KLIB=' + str(BUILD / 'unused-modules')]
     run(['make', *flags, 'usedefconfig'], bp)
@@ -154,5 +159,7 @@ if RESULT['stages']['prepare_6_12_94_source'] == 'passed':
     stage('experimental_fullcone_and_nat_objects', compile_nat)
     stage('ported_mt7987_wed_objects', compile_wed_baseline)
     stage('ported_mt76_with_matching_backports', wed_mt76_dependency_check)
+    from runtime_vm import verify_runtime
+    stage('real_openwrt_fw4_fullcone_packet_tests_in_vm', lambda: verify_runtime(BUILD, download, run))
 print(json.dumps(RESULT, indent=2), flush=True)
 raise SystemExit(1 if any(value != 'passed' for value in RESULT['stages'].values()) else 0)

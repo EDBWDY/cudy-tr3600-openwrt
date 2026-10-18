@@ -1,0 +1,98 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Mainline fw4/PPE backend for the TurboACC configuration schema.
+# No interface, address, DHCP, Wi-Fi, cache, or DNS configuration is changed.
+set -eu
+
+ERROR=/tmp/turboacc-last-error
+NAT_MODE=/proc/sys/net/netfilter/nf_conntrack_nat_mode
+CCA=/proc/sys/net/ipv4/tcp_congestion_control
+
+fail() { printf '%s\n' "$1" | tee -a "$ERROR" >&2; exit 1; }
+get() { uci -q get "$1" 2>/dev/null || printf '%s' "$2"; }
+boolean() { if [ "$1" = 1 ]; then printf true; else printf false; fi; }
+
+status() {
+    software=$(get 'firewall.@defaults[0].flow_offloading' 0)
+    hardware=$(get 'firewall.@defaults[0].flow_offloading_hw' 0)
+    sw=0; hw=0; bound=0; wed_requested=0; wed_attached=0
+    if nft list chain inet fw4 forward 2>/dev/null | grep -Eq 'flow (add|offload) @ft'; then sw=1; fi
+    if nft list flowtable inet fw4 ft 2>/dev/null | grep -q 'flags offload'; then hw=1; fi
+    for file in /sys/kernel/debug/ppe*/bind; do
+        [ -r "$file" ] || continue
+        count=$(grep -c ' BND ' "$file" || true)
+        bound=$((bound + count))
+    done
+    for file in /sys/module/mt7996e/parameters/wed_enable; do
+        [ -r "$file" ] || continue
+        if grep -Eq '^(Y|1)$' "$file"; then wed_requested=1; fi
+    done
+    for file in /sys/kernel/debug/wed*/txinfo; do
+        [ -r "$file" ] || continue
+        if [ -n "$(head -c 1 "$file")" ]; then wed_attached=1; fi
+    done
+    mode=-1
+    if [ -r "$NAT_MODE" ]; then mode=$(cat "$NAT_MODE"); fi
+    printf '{"software_configured":%s,"software_rules_active":%s,"hardware_configured":%s,"hardware_rules_active":%s,"ppe_bound_connections":%s,"fullcone_mode":%s,"tcp_congestion_control":"%s","wed_requested":%s,"wed_attached":%s}\n' \
+        "$(boolean "$software")" "$(boolean "$sw")" "$(boolean "$hardware")" "$(boolean "$hw")" "$bound" "$mode" "$(cat "$CCA")" "$(boolean "$wed_requested")" "$(boolean "$wed_attached")"
+}
+
+apply() {
+    fp=$(get turboacc.config.fastpath disabled)
+    hardware=$(get turboacc.config.fastpath_fo_hw 0)
+    fullcone=$(get turboacc.config.fullcone 0)
+    cca=$(get turboacc.config.tcpcca cubic)
+    case "$fp" in disabled) software=0; hardware=0;; flow_offloading) software=1;; *) fail 'Unsupported fastpath engine for this backend';; esac
+    case "$hardware" in 0|1) :;; *) fail 'Invalid hardware offload value';; esac
+    case "$fullcone" in 0|2) :;; *) fail 'Invalid fullcone value';; esac
+    case "$cca" in ''|*[!a-zA-Z0-9_]*) fail 'Invalid TCP congestion control name';; esac
+    if ! grep -qw "$cca" /proc/sys/net/ipv4/tcp_available_congestion_control; then fail 'TCP congestion algorithm is unavailable'; fi
+    if [ "$fullcone" = 2 ] && [ ! -w "$NAT_MODE" ]; then fail 'Fullcone kernel backend is unavailable'; fi
+    if [ "$hardware" = 1 ] && [ ! -d /sys/kernel/debug/ppe0 ] && [ ! -d /sys/kernel/debug/ppe1 ]; then
+        fail 'MediaTek PPE backend is unavailable; hardware offload was not enabled'
+    fi
+    if [ -n "$(uci -q changes firewall)" ]; then fail 'Pending firewall changes must be saved or reverted before applying TurboACC'; fi
+    mkdir -p /var/lock
+    mkdir /var/lock/turboacc-apply 2>/dev/null || fail 'Another TurboACC apply is in progress'
+    backup=$(mktemp /tmp/turboacc-firewall.XXXXXX)
+    cp -p /etc/config/firewall "$backup"
+    old_mode=-1
+    if [ -r "$NAT_MODE" ]; then old_mode=$(cat "$NAT_MODE"); fi
+    old_cca=$(cat "$CCA")
+    rollback=1
+    finish() {
+        rc=$?
+        if [ "$rc" != 0 ] && [ "$rollback" = 1 ]; then
+            uci -q revert firewall || true
+            cp -p "$backup" /etc/config/firewall
+            fw4 reload >>"$ERROR" 2>&1 || true
+            if [ "$old_mode" != -1 ]; then printf '%s\n' "$old_mode" > "$NAT_MODE"; fi
+            printf '%s\n' "$old_cca" > "$CCA"
+        fi
+        rm -f "$backup"
+        rmdir /var/lock/turboacc-apply
+        return "$rc"
+    }
+    trap finish EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM HUP
+    : > "$ERROR"
+    uci set "firewall.@defaults[0].flow_offloading=$software"
+    uci set "firewall.@defaults[0].flow_offloading_hw=$hardware"
+    fw4 check >"$ERROR" 2>&1 || fail 'Firewall validation failed; original settings restored'
+    uci commit firewall
+    fw4 reload >>"$ERROR" 2>&1 || fail 'Firewall reload failed; original settings restored'
+    if [ -w "$NAT_MODE" ]; then printf '%s\n' "$fullcone" > "$NAT_MODE"; fi
+    printf '%s\n' "$cca" > "$CCA"
+    if [ "$software" = 1 ] && ! nft list chain inet fw4 forward | grep -Eq 'flow (add|offload) @ft'; then
+        fail 'Flow offload rule was not installed; original settings restored'
+    fi
+    rollback=0
+    status
+}
+
+case "${1:-status}" in
+    status) status;;
+    apply) apply;;
+    *) fail 'Usage: turboacc-control status|apply';;
+esac
