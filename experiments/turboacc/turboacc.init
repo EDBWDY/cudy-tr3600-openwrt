@@ -1,5 +1,5 @@
 #!/bin/sh /etc/rc.common
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-only
 START=95
 USE_PROCD=1
 start_service() {

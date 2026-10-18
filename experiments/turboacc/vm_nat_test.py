@@ -112,10 +112,20 @@ def main():
     assert before['tcp_congestion_control']=='reno' and before['software_rules_active']
     assert before['fullcone_mode']==0
     results['apply_real_fw4_and_tcpcca']=True
+    rpc='/usr/libexec/rpcd/luci.turboacc'
+    methods=json.loads(run(rpc,'list').stdout)
+    assert len(methods)==5
+    features=json.loads(run(rpc,'call','getSystemFeatures').stdout)
+    assert features['hasFLOWOFFLOADING'] is True and features['hasMEDIATEKHNAT'] is False
+    assert 'Netfilter' in json.loads(run(rpc,'call','getFastPathStat').stdout)['type']
+    assert json.loads(run(rpc,'call','getMTKPPEStat').stdout)=={'PPE_NUM':0}
+    results['original_turboacc_rpc_contract_reports_real_backend_state']=True
     off=udp_probe(41000);assert not off['third_peer_reached'],off
     results['ordinary_nat_blocks_unknown_udp_peer']=True
     configuration(2,0,'cubic'); after=apply()
     assert after['fullcone_mode']==2 and after['tcp_congestion_control']=='cubic'
+    assert 'Broadcom' in json.loads(run(rpc,'call','getFullConeStat').stdout)['type']
+    assert json.loads(run(rpc,'call','getTCPCCAStat').stdout)['type']=='cubic'
     on=udp_probe(41002)
     assert on['mappings'][0]==on['mappings'][1],on
     assert on['third_peer_reached'],on

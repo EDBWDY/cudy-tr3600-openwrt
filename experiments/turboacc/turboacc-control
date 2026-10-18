@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-only
 # Mainline fw4/PPE backend for the TurboACC configuration schema.
 # No interface, address, DHCP, Wi-Fi, cache, or DNS configuration is changed.
 set -eu

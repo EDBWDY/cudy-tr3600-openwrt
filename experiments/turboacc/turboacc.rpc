@@ -1,0 +1,45 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# Preserve TurboACC's RPC contract while reporting actual fw4/PPE state.
+set -eu
+read_status() { state=$(/usr/libexec/turboacc-control status); }
+field() { printf '%s' "$state" | jsonfilter -e "@.$1"; }
+case "${1:-}:${2:-}" in
+list:)
+    printf '%s\n' '{"getSystemFeatures":{},"getFastPathStat":{},"getFullConeStat":{},"getTCPCCAStat":{},"getMTKPPEStat":{}}'
+    ;;
+call:getSystemFeatures)
+    flow=false
+    if [ -x /sbin/fw4 ] && [ -x /usr/sbin/nft ]; then flow=true; fi
+    ipv6=false; [ ! -f /proc/net/ipv6_route ] || ipv6=true
+    printf '{"hasIPV6":%s,"hasFLOWOFFLOADING":%s,"hasFASTCLASSIFIER":false,"hasSHORTCUTFECM":false,"hasMEDIATEKHNAT":false,"hasXTFULLCONENAT":false,"hasTCPCCA":"%s"}\n' "$ipv6" "$flow" "$(cat /proc/sys/net/ipv4/tcp_available_congestion_control)"
+    ;;
+call:getFastPathStat)
+    read_status
+    if [ "$(field software_rules_active)" != true ]; then printf '{}\n'
+    elif [ "$(field ppe_bound_connections)" -gt 0 ]; then printf '{"type":"Netfilter flow offload / MediaTek PPE"}\n'
+    else printf '{"type":"Netfilter flow offload"}\n'; fi
+    ;;
+call:getFullConeStat)
+    if [ -r /proc/sys/net/netfilter/nf_conntrack_nat_mode ] && [ "$(cat /proc/sys/net/netfilter/nf_conntrack_nat_mode)" != 0 ]; then
+        printf '{"type":"Broadcom Fullcone (UDP)"}\n'
+    else printf '{}\n'; fi
+    ;;
+call:getTCPCCAStat)
+    printf '{"type":"%s"}\n' "$(cat /proc/sys/net/ipv4/tcp_congestion_control)"
+    ;;
+call:getMTKPPEStat)
+    count=0
+    for index in 0 1 2; do [ ! -r "/sys/kernel/debug/ppe$index/bind" ] || count=$((count+1)); done
+    printf '{"PPE_NUM":%s' "$count"
+    for index in 0 1 2; do
+        path="/sys/kernel/debug/ppe$index/bind"
+        [ -r "$path" ] || continue
+        bound=$(grep -c ' BND ' "$path" || true)
+        # This package targets the pinned mainline driver whose entries shift is 4.
+        printf ',"BIND_PPE%s":%s,"ALL_PPE%s":16384' "$index" "$bound" "$index"
+    done
+    printf '}\n'
+    ;;
+*) printf '{"error":"Unsupported read-only TurboACC RPC method"}\n'; exit 1;;
+esac
