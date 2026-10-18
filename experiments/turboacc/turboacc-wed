@@ -19,8 +19,9 @@ apply)
       /^[ \t]*options[ \t]+mt7996e([ \t]|$)/ {
         comment=""; hash=index($0,"#"); if(hash){comment=substr($0,hash);$0=substr($0,1,hash-1)}
         gsub(/[ \t]+wed_enable=[^ \t]+/,"")
+        sub(/[ \t]+$/,"")
         if(!added){$0=$0 " wed_enable=" wanted; added=1}
-        print $0 " " comment; next
+        print $0 (comment=="" ? "" : " " comment); next
       }
       {print}
       END{if(!added)print "options mt7996e wed_enable=" wanted}
@@ -29,6 +30,9 @@ apply)
     mv "$temp" "$file"
     ;;
 status)
+    # OpenWrt jshn intentionally reads unset namespace variables internally.
+    # Keep strict option validation in apply; do not use nounset in jshn calls.
+    set +u
     . /usr/share/libubox/jshn.sh
     supported=0; requested=0; attached=0; pending=0
     configured=$(uci -q get turboacc.config.wed_enable || echo 0)

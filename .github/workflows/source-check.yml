@@ -19,6 +19,8 @@ jobs:
           sudo apt-get install -y zstd pigz python3-cryptography gettext gawk libncurses-dev libssl-dev rsync unzip file wget zlib1g-dev python3-setuptools
       - name: Check public source privacy
         run: python3 scripts/public_source_audit.py
+      - name: Check WED diagnostics using real OpenWrt ash, UCI and jshn
+        run: python3 experiments/turboacc/test_wed_userspace.py
       - name: Check source regressions (independent of firmware compilation)
         id: tests
         continue-on-error: true

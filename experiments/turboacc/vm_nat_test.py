@@ -18,7 +18,11 @@ if 'turboacc_vm=1' not in Path('/proc/cmdline').read_text():
 
 
 def run(*args, check=True):
-    return subprocess.run(args, text=True, capture_output=True, check=check)
+    result = subprocess.run(args, text=True, capture_output=True)
+    if check and result.returncode:
+        print(result.stdout, result.stderr, flush=True)
+        result.check_returncode()
+    return result
 
 
 def server():
