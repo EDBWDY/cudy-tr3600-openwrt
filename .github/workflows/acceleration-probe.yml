@@ -1,0 +1,40 @@
+name: TR3600 acceleration backend compile probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [turboacc-compile-probe]
+    paths:
+      - '.github/workflows/acceleration-probe.yml'
+      - 'experiments/turboacc/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tr3600-acceleration-probe
+  cancel-in-progress: false
+
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout reviewed experiment
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install standard cross compiler and kernel build prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu build-essential flex bison libelf-dev libssl-dev bc lua5.1
+      - name: Compile real Netfilter code and check WED patch dependencies
+        run: python3 -u experiments/turboacc/compile_probe.py
+      - name: Record bounded result in job summary
+        if: always()
+        run: |
+          if test -f experiments/turboacc/result.json; then
+            printf '```json\n' >> "$GITHUB_STEP_SUMMARY"
+            cat experiments/turboacc/result.json >> "$GITHUB_STEP_SUMMARY"
+            printf '\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
