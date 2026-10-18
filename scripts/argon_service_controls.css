@@ -1,0 +1,15 @@
+/* argon-service-control-groups */
+.cbi-service-controls {
+ display:flex;
+ flex-wrap:wrap;
+ align-items:center;
+ gap:6px 20px;
+}
+.cbi-service-controls > .cbi-service-control-group {
+ display:inline-flex;
+ flex-wrap:wrap;
+ align-items:center;
+ gap:6px;
+ max-width:100%;
+}
+.cbi-service-controls .cbi-button { margin:0; }

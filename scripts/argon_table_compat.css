@@ -1,0 +1,23 @@
+/* argon-native-table-compat: preserve Argon's existing responsive card design. */
+@media screen and (max-width:1152px) {
+ /* A block table must not leave its native tbody as a shrink-to-fit row group. */
+ table.cbi-section-table > tbody.cbi-section-tbody {
+  display:block;
+  width:100%;
+ }
+ /* Modern LuCI already renders the name; Argon supplies the mobile card title. */
+ table.cbi-section-table > tbody.cbi-section-tbody > .tr[data-title] > .td.cbi-section-table-titles {
+  display:none !important;
+ }
+ /* Include padding in the existing 50% columns, without changing their layout. */
+ table.cbi-section-table > tbody.cbi-section-tbody > .tr[data-title]:has(> .td.cbi-section-table-titles) > .td {
+  box-sizing:border-box;
+ }
+}
+@media screen and (min-width:1153px) {
+ /* Desktop uses the native name column instead of an additional pseudo-cell. */
+ table.cbi-section-table > tbody.cbi-section-tbody > .tr[data-title]:has(> .td.cbi-section-table-titles)::before {
+  content:none;
+  display:none;
+ }
+}

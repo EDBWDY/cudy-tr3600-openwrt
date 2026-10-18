@@ -115,6 +115,10 @@ apply() {
     if [ "$software" = 1 ] && ! nft list chain inet fw4 forward | grep -Eq 'flow (add|offload) @ft'; then
         fail 'Flow offload rule was not installed; original settings restored'
     fi
+    # Boot parameter only; no driver reload, reboot, or live Wi-Fi interruption.
+    if [ -x /usr/libexec/turboacc-wed ]; then
+        /usr/libexec/turboacc-wed apply >>"$ERROR" 2>&1 || fail 'Saving the WED boot parameter failed'
+    fi
     rollback=0
     status
 }

@@ -6,7 +6,7 @@ read_status() { state=$(/usr/libexec/turboacc-control status); }
 field() { printf '%s' "$state" | jsonfilter -e "@.$1"; }
 case "${1:-}:${2:-}" in
 list:)
-    printf '%s\n' '{"getSystemFeatures":{},"getFastPathStat":{},"getFullConeStat":{},"getTCPCCAStat":{},"getMTKPPEStat":{}}'
+    printf '%s\n' '{"getSystemFeatures":{},"getFastPathStat":{},"getFullConeStat":{},"getTCPCCAStat":{},"getMTKPPEStat":{},"getWedStat":{}}'
     ;;
 call:getSystemFeatures)
     flow=false
@@ -28,6 +28,9 @@ call:getFullConeStat)
         2) printf '{"type":"Broadcom Fullcone (UDP)"}\n';;
         *) printf '{"type":"System default NAT (UDP)"}\n';;
     esac
+    ;;
+call:getWedStat)
+    /usr/libexec/turboacc-wed status
     ;;
 call:getTCPCCAStat)
     printf '{"type":"%s"}\n' "$(cat /proc/sys/net/ipv4/tcp_congestion_control)"

@@ -21,7 +21,7 @@ def audit_source(root):
     if names != {'etc/uci-defaults/99-tr3600-custom'}:
         raise RuntimeError('Only the reviewed credential-free first-boot script may enter files/')
     count = 0
-    for base in [overlay, root / 'package']:
+    for base in [overlay, root / 'package', root / 'platforms', root / 'optional']:
         for path in base.rglob('*'):
             if not path.is_file():
                 continue

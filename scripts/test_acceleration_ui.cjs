@@ -34,6 +34,18 @@ async function main() {
     assert(page.root.dataset.accDark==='true');
     readOnly=true; page.update(clone(state),false);
     assert(page.inputs.software.disabled && page.inputs.hardware.disabled && page.inputs.wed.disabled);
-    console.log('8 UI interaction checks passed');
+    state.wed_pending=false; state.configured.wed=true; state.runtime.wed=false;
+    state.wed_diagnostic={state:'failed',logs:'[11] failed to attach wed device',logs_available:true};
+    page.update(clone(state),true);
+    assert(page.inputs.wed.checked && page.badges.wed.textContent==='未生效');
+    assert(!page.wedFault.hidden && page.wedLog.textContent===state.wed_diagnostic.logs);
+    page.wedFault.children[1].open=true;
+    page.update(clone(state),false);
+    assert(page.wedFault.children[1].open,'Polling preserves expanded log');
+    state.wed_diagnostic={state:'running',logs:'old failure',logs_available:true};state.runtime.wed=true;
+    page.update(clone(state),true);assert(page.wedFault.hidden && page.badges.wed.textContent==='已开启');
+    state.wed_diagnostic={state:'unknown',logs:'',logs_available:false};state.runtime.wed=false;
+    page.update(clone(state),true);assert(page.badges.wed.textContent==='状态未知' && !page.wedFault.hidden);
+    console.log('13 UI interaction checks passed');
 }
 main().catch(e=>{console.error(e);process.exit(1)});

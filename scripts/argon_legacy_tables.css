@@ -1,0 +1,26 @@
+/* argon-scroll-table-compat */
+.cbi-table-scroll { display:contents; }
+@media screen and (max-width:768px) {
+ .cbi-table-scroll {
+  display:block;
+  width:100%;
+  max-width:100%;
+  box-sizing:border-box;
+  overflow-x:auto;
+ }
+ .cbi-table-scroll > table:not(.table) {
+  display:table;
+  width:100%;
+  max-width:none;
+ }
+ .cbi-table-scroll :is(th,td) {
+  white-space:nowrap;
+ }
+}
+@media screen and (max-width:600px) {
+ .cbi-table-scroll td.cbi-value-field:not(.td) {
+  display:table-cell !important;
+  padding-left:20px !important;
+  padding-right:20px !important;
+ }
+}

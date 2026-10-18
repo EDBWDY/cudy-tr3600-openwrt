@@ -1,0 +1,47 @@
+#!/bin/sh
+# Authenticated read-only lookup of the requesting host, never a forwarded IP.
+. /usr/share/libubox/jshn.sh
+respond() {
+ printf 'Status: %s\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\n\r\n' "$1"
+ json_init
+ if [ "$1" = '200 OK' ]; then json_add_boolean ok 1; json_add_string mac "$MAC"; else json_add_boolean ok 0; json_add_string error "$2"; fi
+ json_dump
+ exit 0
+}
+SID=''
+BODY_SID=''
+if [ "$REQUEST_METHOD" = POST ]; then
+ case "$CONTENT_LENGTH" in ''|*[!0-9]*) respond '400 Bad Request' '请求格式无效';; esac
+ [ "$CONTENT_LENGTH" -le 256 ] || respond '400 Bad Request' '请求格式无效'
+ read -r REQUEST || true
+ if json_load "$REQUEST"; then json_get_var BODY_SID sid; fi
+fi
+IFS=';' read -r C1 C2 C3 C4 C5 C6 C7 C8 <<EOF
+$HTTP_COOKIE
+EOF
+for cookie in "sysauth=$BODY_SID" "sysauth=$HTTP_X_LUCI_AUTH" "$C1" "$C2" "$C3" "$C4" "$C5" "$C6" "$C7" "$C8"; do
+ cookie=$(printf '%s' "$cookie" | sed 's/^[[:space:]]*//')
+ case "$cookie" in sysauth=*|sysauth_http=*|sysauth_https=*) candidate=${cookie#*=};
+  if printf '%s' "$candidate" | grep -Eq '^[0-9a-f]{32}$'; then
+   auth=$(ubus call session access "{\"ubus_rpc_session\":\"$candidate\",\"scope\":\"ubus\",\"object\":\"wan.identity\",\"function\":\"status\"}" 2>/dev/null)
+   if json_load "$auth"; then json_get_var allowed access; [ "$allowed" != 1 ] || SID=$candidate; fi
+  fi;; esac
+done
+[ -n "$SID" ] || respond '403 Forbidden' '请重新登录路由器'
+CLIENT=$REMOTE_ADDR
+MAC=''
+case "$CLIENT" in
+ *:*)
+  printf '%s' "$CLIENT" | grep -Eq '^[0-9a-fA-F:]+$' || respond '400 Bad Request' '无法识别本机地址'
+  MAC=$(ip -6 neigh show to "$CLIENT" 2>/dev/null | awk '/lladdr/ && !/FAILED|INCOMPLETE/ {for(i=1;i<NF;i++)if($i=="lladdr"){print $(i+1);exit}}')
+ ;;
+ *)
+  printf '%s' "$CLIENT" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || respond '400 Bad Request' '无法识别本机地址'
+  MAC=$(awk -v ip="$CLIENT" '$1==ip && $3=="0x2" {print $4;exit}' /proc/net/arp)
+ ;;
+esac
+MAC=$(printf '%s' "$MAC" | tr 'a-f' 'A-F')
+printf '%s' "$MAC" | grep -Eq '^[0-9A-F][02468ACE](:[0-9A-F]{2}){5}$' && [ "$MAC" != '00:00:00:00:00:00' ] || respond '404 Not Found' '无法识别本机 MAC，请手动填写'
+# Do not report success when no usable local neighbor was found.
+[ -n "$MAC" ] || respond '404 Not Found' '无法识别本机 MAC，请手动填写'
+respond '200 OK'

@@ -1,0 +1,22 @@
+"""Shared channel metadata columns."""
+def add_details(s):
+    methods = "    technology(r) {\n        const modes = (r.technology || r.hwmode || '').toUpperCase().replace(/^11/, '').split('/');\n        for (const mode of ['BE','AX','AC','N','G','B','A']) if (modes.includes(mode)) return mode;\n        if (r.eht_operation) return 'BE';\n        if (r.he_operation) return 'AX';\n        if (r.vht_operation) return 'AC';\n        if (r.ht_operation) return 'N';\n        return '—';\n    },\n    security(r) {\n        let versions=[], ciphers=[];\n        if (r.security) {\n            const raw=r.security.toUpperCase();\n            if (/^(OPEN|NONE)(\\/NONE)?$/.test(raw)) return '开放';\n            for (const [token,label] of [['WPA3','WPA3-SAE'],['WPA2','WPA2-PSK'],['WPA1','WPA-PSK']])\n                if (raw.includes(token)) versions.push(raw.includes('PSK') || raw.includes('SAE') ? label : token+'-EAP');\n            if (!versions.length && raw.includes('WPA')) versions.push(raw.includes('PSK')?'WPA-PSK':'WPA-EAP');\n            versions.reverse();\n            ciphers=(raw.split('/')[1] || '').split('+');\n            if (!versions.length) return raw;\n        } else {\n            const e=r.encryption;\n            if (!e) return '—';\n            if (e.enabled === false) return '开放';\n            const auth=(e.authentication || []).map(a=>a.toLowerCase());\n            versions=(e.wpa || []).map(v=>(v===1?'WPA':'WPA'+v)+'-'+(auth.includes('eap')?'EAP':v===3&&auth.includes('sae')?'SAE':'PSK'));\n            ciphers=e.ciphers || [];\n            if (!versions.length) return ciphers.join('/').toUpperCase() || '—';\n        }\n        const cipher=[...new Set(ciphers.filter(Boolean).map(c=>/^(CCMP|AES)$/i.test(c)?'AES':c.toUpperCase()))].join('/');\n        return [...new Set(versions.map(v => v.replace(/-(PSK|SAE|EAP)$/, '')))].join('/');\n    },\n"
+    s=s.replace('\tradios: {},',methods+'\tradios: {},')
+    s=s.replace("'%h'.format(local_wifi.bssid)", "'%h'.format(local_wifi.bssid), this.technology(local_wifi), this.security(local_wifi)")
+    s=s.replace("E('span', { 'style': s }, '%h'.format(res.bssid))", "E('span', { 'style': s }, '%h'.format(res.bssid)), this.technology(res), this.security(res)")
+    s=s.replace("E('th', { 'class': 'th col-3 middle left hide-xs' }, _('BSSID'))", "E('th', { 'class': 'th col-3 middle left hide-xs' }, _('BSSID')), E('th', { 'class': 'th' }, '技术'), E('th', { 'class': 'th' }, '加密')")
+    s=s.replace('\tcallScan: rpc.declare', "\tcallCapabilities: rpc.declare({object:'file',method:'exec',params:['command'],expect:{}}),\n\tcallScan: rpc.declare")
+    s=s.replace('return Promise.all([this.callScan(device), this.callInfo(device)]);', "return Promise.all([this.callScan(device), this.callInfo(device)]).then(pair => this.callCapabilities('/usr/libexec/tr3600-channel-capabilities').catch(() => ({})).then(meta => [...pair,meta]));")
+    s=s.replace('function([results, local_wifi]) {', "function([results, local_wifi, meta]) {\n            try { const peers=JSON.parse(meta.stdout || '{}').peers || []; for(const res of results) { const p=peers.find(p=>p.bssid===(res.bssid||'').toLowerCase()); if(p) res.technology=p.technology; } } catch (_) {}")
+    return s
+
+HELPER = '#!/bin/sh\nfor dev in $(iw dev | awk \'$1 == "Interface" { print $2 }\'); do\n    iw dev "$dev" scan dump 2>/dev/null\ndone | awk \'\nfunction flush() { if (mac != "" && mode != "") { printf "%s{\\"bssid\\":\\"%s\\",\\"technology\\":\\"%s\\"}",sep,mac,mode; sep="," } }\nBEGIN { printf "{\\"peers\\":["; sep="" }\n/^BSS / { flush(); mac=tolower(substr($2,1,17)); mode="" }\n/HT capabilities:/ { if (mode == "") mode="N" }\n/VHT capabilities:/ { if (mode != "AX" && mode != "BE") mode="AC" }\n/HE capabilities:/ { if (mode != "BE") mode="AX" }\n/EHT capabilities:/ { mode="BE" }\nEND { flush(); print "]}" }\n\'\n'
+
+def install_helper(package):
+    import json
+    helper=package/'root/usr/libexec/tr3600-channel-capabilities'
+    helper.parent.mkdir(parents=True,exist_ok=True)
+    helper.write_text(HELPER,encoding='utf-8');helper.chmod(0o755)
+    acl=package/'root/usr/share/rpcd/acl.d/tr3600-channel-capabilities.json'
+    acl.parent.mkdir(parents=True,exist_ok=True)
+    acl.write_text(json.dumps({'luci-mod-status-channel_analysis':{'read':{'file':{'/usr/libexec/tr3600-channel-capabilities':['exec']},'ubus':{'file':['exec']}}}}),encoding='utf-8')

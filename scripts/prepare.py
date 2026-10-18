@@ -44,6 +44,8 @@ customize_mounts(SRC / 'feeds/luci/modules/luci-mod-system')
 
 from channel_graph import customize_package as customize_channel_graph
 customize_channel_graph(SRC / 'feeds/luci/modules/luci-mod-status')
+from service_controls import customize_package as customize_service_controls
+customize_service_controls(SRC / 'feeds/luci/applications/luci-app-https-dns-proxy')
 
 # Build the same pinned Rust release for this x86_64 host and AArch64 router.
 # Avoid compiling unused LLVM backends and duplicating static LLVM in each tool.
@@ -81,6 +83,11 @@ for name, origin in {
     makefile.write_text(data)
 
 # Use the previously verified GUI adaptation for the official ZeroTier daemon.
+from theme_customizations import customize_theme
+customize_theme(dest / 'luci-theme-argon')
+from tailscale_tables import customize_sources as customize_tailscale_tables
+customize_tailscale_tables(SRC)
+
 zt_configs = list((dest / 'luci-app-zerotier/htdocs').rglob('config.js'))
 if len(zt_configs) != 1:
     raise RuntimeError(f'Unexpected ZeroTier GUI layout: {zt_configs}')
@@ -99,13 +106,19 @@ core_binary.write_bytes(gzip.decompress(archive))
 core_binary.chmod(0o755)
 
 shutil.copytree(ROOT / 'files', SRC / 'files')
-for package in ['luci-app-tr3600-fan', 'luci-app-tr3600-usb', 'luci-app-tr3600-clients', 'luci-app-tr3600-acceleration']:
+for package in ['luci-app-tr3600-fan', 'luci-app-tr3600-usb', 'luci-app-tr3600-clients', 'luci-app-tr3600-acceleration', 'luci-app-network-identity']:
     for path in (dest / package / 'files').rglob('*'):
-        if path.is_file() and ('init.d' in path.parts or 'libexec' in path.parts):
+        if path.is_file() and ('init.d' in path.parts or 'libexec' in path.parts or 'cgi-bin' in path.parts):
             path.chmod(0o755)
 for path in (SRC / 'files/etc/uci-defaults').iterdir():
     path.chmod(0o755)
 shutil.copyfile(ROOT / 'config.seed', SRC / '.config')
+# Apply the paired, compile- and packet-tested backend before defconfig.
+# This changes compiler inputs only; it never contacts a running router.
+import sys
+sys.path.insert(0, str(ROOT / 'experiments/turboacc'))
+from integrate_openwrt import integrate
+integrate(SRC)
 run('make', 'defconfig', cwd=SRC)
 config = set((SRC / '.config').read_text().splitlines())
 requested = [line for line in (ROOT / 'config.seed').read_text().splitlines() if line.startswith('CONFIG_') and line.endswith('=y')]

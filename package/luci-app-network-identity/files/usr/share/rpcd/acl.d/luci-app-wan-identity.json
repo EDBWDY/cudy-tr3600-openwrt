@@ -1,0 +1,1 @@
+{"luci-app-wan-identity":{"description":"Manage saved WAN MAC and DHCP hostname identities","read":{"ubus":{"wan.identity":["status"]}},"write":{"ubus":{"wan.identity":["save","remove","apply"]}}}}

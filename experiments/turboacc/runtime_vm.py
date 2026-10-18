@@ -48,9 +48,10 @@ def verify_runtime(build, download, run):
     resolver.write_text('nameserver 192.0.2.1\n')
     from prepare_package import prepare
     package=prepare(vm/'turboacc-package')
-    for path in [package/'root/etc/init.d/turboacc',package/'root/usr/libexec/rpcd/luci.turboacc',package/'root/usr/libexec/turboacc-control']:
+    for path in [package/'root/etc/init.d/turboacc',package/'root/usr/libexec/rpcd/luci.turboacc',package/'root/usr/libexec/turboacc-control',package/'root/usr/libexec/turboacc-wed']:
         run(['sh','-n',path],vm)
     run(['node','--check',package/'htdocs/luci-static/resources/view/turboacc.js'],vm)
+    run(['node','--check',package/'htdocs/luci-static/resources/turboacc_wed.js'],vm)
     shutil.copytree(package/'root',root,dirs_exist_ok=True)
     tests=root/'root/acceleration';tests.mkdir(parents=True,exist_ok=True)
     shutil.copyfile(HERE/'vm_nat_test.py',tests/'vm_nat_test.py')

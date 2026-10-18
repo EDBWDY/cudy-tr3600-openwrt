@@ -42,6 +42,29 @@ function policies() {
     });
     return count;
 }
+function wedHealth(enabled, attached, readable, logs) {
+    if (attached) return 'running';
+    if (!enabled) return 'disabled';
+    if (match(logs || '', /failed to attach wed device/)) return 'failed';
+    return readable ? 'not_attached' : 'unknown';
+}
+function wedDiagnostics(enabled) {
+    let attached = false, readable = false;
+    // txinfo only emits registers while a WLAN device is attached; directory existence is insufficient.
+    for (let name in ['wed0', 'wed1', 'wed2']) {
+        let info = readfile('/sys/kernel/debug/' + name + '/txinfo');
+        if (info == null) continue;
+        readable = true;
+        if (length(trim(info))) attached = true;
+    }
+    let result = run('dmesg 2>/dev/null'), lines = [];
+    for (let line in split(result.text, '\n')) {
+        if (match(line, /[Ww][Ee][Dd]/)) push(lines, line);
+    }
+    let logs = join('\n', slice(lines, -30));
+    return { state: wedHealth(enabled, attached, readable, logs), logs,
+        logs_available: result.code == 0 };
+}
 function status() {
     let section;
     uci.foreach('firewall', 'defaults', s => { if (!section) section = s; });
@@ -52,6 +75,7 @@ function status() {
     let hardware = active && !!match(table.text, /flags\s+offload(\s|;|$)/);
     let parameter = trim(readfile('/sys/module/mt7996e/parameters/wed_enable') || '');
     let wed = index(['Y', '1'], parameter) >= 0;
+    let diagnostic = wedDiagnostics(wed);
     let configured = wedOption(readfile(MODULES));
     // No override: report the driver's existing default without writing it.
     if (configured == null) configured = wed;
@@ -65,7 +89,8 @@ function status() {
     return {
         ok: true,
         configured: { software: section.flow_offloading == '1', hardware: section.flow_offloading_hw == '1', wed: configured },
-        runtime: { software: active, hardware, wed },
+        runtime: { software: active, hardware, wed: diagnostic.state == 'running' },
+        wed_diagnostic: diagnostic,
         supported: { software: !!stat('/sys/module/nft_flow_offload') || !!stat('/lib/modules/' + trim(run('uname -r').text) + '/nft_flow_offload.ko'), hardware: !!stat('/sys/kernel/debug/ppe0') || !!stat('/sys/kernel/debug/ppe1'), wed: !!parameter },
         wed_pending: !!parameter && configured != wed,
         bindings: readable ? bindings : null,
@@ -137,7 +162,12 @@ try {
         if (setWedOption(enabled, true) != enabled) die('WED update not idempotent');
         let multiple = setWedOption('options mt7996e wed_enable=0\noptions mt7996e other=Y wed_enable=0\n', true);
         if (!wedOption(multiple) || !match(multiple, /other=Y/)) die('Duplicate override failed');
-        result = { ok: true, tests: 6 };
+        if (wedHealth(true, false, true, 'failed to attach wed device') != 'failed') die('WED failure detection');
+        if (wedHealth(true, true, true, 'failed to attach wed device') != 'running') die('WED recovery precedence');
+        if (wedHealth(true, false, true, '') != 'not_attached') die('WED unattached detection');
+        if (wedHealth(true, false, false, '') != 'unknown') die('WED unknown detection');
+        if (wedHealth(false, false, true, 'failed to attach wed device') != 'disabled') die('WED disabled detection');
+        result = { ok: true, tests: 11 };
     } else die('未知操作');
     print(sprintf('%J\n', result));
 } catch (e) {

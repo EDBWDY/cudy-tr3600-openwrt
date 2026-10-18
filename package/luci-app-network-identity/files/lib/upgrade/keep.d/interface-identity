@@ -1,0 +1,11 @@
+/etc/interface-identity/
+/etc/wan-identity/
+/usr/libexec/interface-identity
+/usr/libexec/wan-identity
+/usr/libexec/rpcd/interface.identity
+/usr/libexec/rpcd/wan.identity
+/usr/share/rpcd/acl.d/luci-app-interface-identity.json
+/usr/share/rpcd/acl.d/luci-app-wan-identity.json
+/usr/share/luci/menu.d/luci-app-wan-identity.json
+/www/cgi-bin/wan-identity-client
+/www/luci-static/resources/view/network/interface_identity_v5.js

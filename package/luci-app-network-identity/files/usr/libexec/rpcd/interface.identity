@@ -1,0 +1,5 @@
+#!/bin/sh
+case "$1" in
+list) echo '{"status":{"device":""},"save":{"device":"","id":"","name":"","mac":"","hostname":""},"remove":{"device":"","id":""},"apply":{"device":"","id":"","preview":true},"confirm":{"device":""},"rollback":{"device":""}}';;
+call) exec /usr/libexec/interface-identity "$2";;
+esac

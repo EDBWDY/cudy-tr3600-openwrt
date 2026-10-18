@@ -1,0 +1,265 @@
+#!/bin/sh
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+umask 077
+BASE=/etc/interface-identity
+LOCK=/tmp/interface-identity.lock
+STATE=/tmp/interface-identity-state.json
+DEFAULT=p0000000000000000
+fail() { json_init; json_add_boolean ok 0; json_add_string error "$1"; json_dump; exit 0; }
+ok() { json_init; json_add_boolean ok 1; json_dump; }
+valid_dev() { printf '%s' "$1" | grep -Eq '^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,14}$'; }
+valid_mac() { printf '%s' "$1" | grep -Eq '^[0-9A-F][02468ACE](:[0-9A-F]{2}){5}$' && [ "$1" != 00:00:00:00:00:00 ]; }
+valid_id() { printf '%s' "$1" | grep -Eq '^p[0-9a-f]{16}$'; }
+legacy_wan() { [ "$TARGET" = eth0 ] && [ "$(uci -q get network.wan.device)" = eth0 ]; }
+lock() {
+ mkdir "$LOCK" 2>/dev/null || fail '另一个接口正在切换，请稍后再试'
+ mkdir /tmp/wan-identity.lock 2>/dev/null || { rmdir "$LOCK"; fail 'WAN 正在切换，请稍后再试'; }
+ trap 'rmdir "$LOCK" /tmp/wan-identity.lock 2>/dev/null' EXIT
+}
+wireless_map() {
+ WSECTION=''; RADIO=''; DRIVER=''
+ json_set_namespace wi oldns
+ if json_load "$(ubus call network.wireless status 2>/dev/null)"; then
+  json_get_keys radios
+  for radio in $radios; do
+   json_select "$radio"; json_select interfaces 2>/dev/null || { json_select ..; continue; }
+   json_get_keys entries
+   for entry in $entries; do
+    json_select "$entry"; json_get_var ifname ifname; json_get_var section section; json_select ..
+    if [ "$ifname" = "$1" ]; then WSECTION=$section; RADIO=$radio; DRIVER=$(uci -q get "wireless.$radio.type"); fi
+   done
+   json_select ..; json_select ..
+  done
+ fi
+ json_set_namespace "$oldns"
+}
+device_info() {
+ valid_dev "$1" && [ -r "/sys/class/net/$1/address" ] || fail '接口不存在'
+ DEV=$1; MAC_NOW=$(tr a-f A-F < "/sys/class/net/$DEV/address")
+ KIND='以太网'; EDITABLE=1; REASON=''; NET=''; PROTO='none'; IP=''; UP=0
+ if [ "$(cat "/sys/class/net/$DEV/type")" != 1 ] || ! valid_mac "$MAC_NOW"; then EDITABLE=0; REASON='该接口没有可修改的以太网 MAC'; KIND='隧道或系统接口'; fi
+ [ ! -d "/sys/class/net/$DEV/bridge" ] || KIND='网桥'
+ wireless_map "$DEV"
+ if [ -n "$WSECTION" ]; then
+  KIND='无线'
+  if [ "$DRIVER" = mtwifi ]; then EDITABLE=0; REASON='当前 mtwifi 驱动不支持单独配置此接口 MAC'; fi
+ elif [ -d "/sys/class/net/$DEV/phy80211" ]; then EDITABLE=0; REASON='无线接口尚未关联到配置'; KIND='无线';
+ elif printf '%s' "$DEV" | grep -Eq '^(ra[x]?[0-9]+|apcli[x]?[0-9]+)$'; then EDITABLE=0; REASON='当前 mtwifi 驱动不支持单独配置此接口 MAC'; KIND='无线'; fi
+ find_network() { local n="$1" d; config_get d "$n" device; if [ "$d" = "$DEV" ]; then [ -n "$NET" ] || { NET=$n; config_get PROTO "$n" proto none; }; fi; }
+ config_load network; config_foreach find_network interface
+ if [ -n "$NET" ]; then
+  json_set_namespace ni oldns
+  if json_load "$(ubus call "network.interface.$NET" status 2>/dev/null)"; then
+   json_get_var UP up
+   json_select ipv4-address >/dev/null 2>&1 && { json_select 1 >/dev/null 2>&1 && json_get_var IP address; }
+  fi
+  json_set_namespace "$oldns"
+ else [ "$(cat "/sys/class/net/$DEV/operstate")" != up ] || UP=1; fi
+ SYSTEM_HOST=$(uci -q get system.@system[0].hostname)
+ HOST_NOW=''; [ "$PROTO" != dhcp ] || HOST_NOW=$(uci -q get "network.$NET.hostname")
+}
+append_interfaces() {
+ json_add_array interfaces
+ for path in /sys/class/net/*; do
+  d=${path##*/}; valid_dev "$d" || continue
+  json_set_namespace entry savedns; device_info "$d"; json_set_namespace "$savedns"
+  json_add_object ''; json_add_string device "$d"; json_add_string network "$NET"; json_add_string kind "$KIND"; json_add_string mac "$MAC_NOW"; json_add_boolean editable "$EDITABLE"; json_add_string reason "$REASON"; json_close_object
+ done
+ json_close_array
+}
+read_profile() {
+ valid_id "$ID" && [ -f "$STORE/profiles/$ID.json" ] || fail '方案不存在'
+ json_load "$(cat "$STORE/profiles/$ID.json")" || fail '方案文件损坏'
+ json_get_var NAME name; json_get_var MAC mac; json_get_var HOST hostname
+ valid_mac "$MAC" || fail '方案 MAC 无效'
+}
+write_profile() {
+ json_init; json_add_string id "$ID"; json_add_string name "$NAME"; json_add_string mac "$MAC"; json_add_string hostname "$HOST"
+ json_dump > "$STORE/profiles/.$ID.tmp" && mv "$STORE/profiles/.$ID.tmp" "$STORE/profiles/$ID.json"
+}
+ensure_initial() {
+ mkdir -p "$STORE/profiles"
+ if [ ! -f "$STORE/profiles/$DEFAULT.json" ]; then
+  saved_id=$ID; saved_name=$NAME; saved_mac=$MAC; saved_host=$HOST
+  ID=$DEFAULT; NAME='初始身份'; MAC=$MAC_NOW; HOST=$HOST_NOW; write_profile
+  ID=$saved_id; NAME=$saved_name; MAC=$saved_mac; HOST=$saved_host
+ fi
+}
+generic_status() {
+ device_info "$TARGET"
+ json_init; json_add_boolean ok 1; json_add_string version '2.0.0'
+ json_add_object current; json_add_string device "$DEV"; json_add_string network "$NET"; json_add_string mac "$MAC_NOW"; json_add_string hostname "${HOST_NOW:-$SYSTEM_HOST}"; json_add_string system_hostname "$SYSTEM_HOST"; json_add_string reported ''; json_add_string proto "$PROTO"; json_add_string ipv4 "$IP"; json_add_boolean up "$UP"; json_add_boolean editable "$EDITABLE"; json_add_string reason "$REASON"; json_close_object
+ json_add_array profiles
+ if [ ! -f "$STORE/profiles/$DEFAULT.json" ]; then
+  json_add_object ''; json_add_string id "$DEFAULT"; json_add_string name '初始身份'; json_add_string mac "$MAC_NOW"; json_add_string hostname "$HOST_NOW"; json_add_boolean initial 1; json_add_boolean active 1; json_close_object
+ fi
+ for profile in "$STORE"/profiles/p*.json; do
+  [ -f "$profile" ] || continue
+  json_set_namespace profile savedns; json_load "$(cat "$profile")"; json_get_var pid id; json_get_var pname name; json_get_var pmac mac; json_get_var phost hostname; json_set_namespace "$savedns"
+  json_add_object ''; json_add_string id "$pid"; json_add_string name "$pname"; json_add_string mac "$pmac"; json_add_string hostname "$phost"; json_add_boolean initial "$([ "$pid" = "$DEFAULT" ] && echo 1 || echo 0)"; json_add_boolean active "$([ "$pmac" = "$MAC_NOW" ] && [ "$phost" = "$HOST_NOW" ] && echo 1 || echo 0)"; json_close_object
+ done
+ json_close_array
+}
+state() {
+ json_init; json_add_string device "$TARGET"; json_add_string id "$ID"; json_add_string state "$1"; json_add_string message "$2"; json_add_int deadline "$3"
+ json_dump > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+}
+plan() {
+ device_info "$TARGET"; [ "$EDITABLE" = 1 ] || fail "$REASON"
+ [ -z "$(uci -q changes network)$(uci -q changes wireless)" ] || fail '请先应用或撤销其他网络和无线配置修改'
+ PACKAGE=network; SECTION=''
+ if [ -n "$WSECTION" ]; then PACKAGE=wireless; SECTION=$WSECTION
+ else
+  find_device() { local n="$1" d; config_get d "$n" name; [ "$d" != "$TARGET" ] || SECTION=$n; }
+  config_load network; config_foreach find_device device
+  [ -n "$SECTION" ] || SECTION=identity_$(printf '%s' "$TARGET" | md5sum | cut -c1-12)
+  existing_type=$(uci -q get "network.$SECTION")
+  [ -z "$existing_type" ] || [ "$existing_type" = device ] || fail '设备配置名称冲突'
+ fi
+}
+set_runtime() {
+ local current_up="$1" addr="$2"
+ ip link set dev "$TARGET" down || return 1
+ ip link set dev "$TARGET" address "$addr"
+ local rc=$?
+ [ "$current_up" != 1 ] || ip link set dev "$TARGET" up
+ return "$rc"
+}
+worker() {
+ TARGET=$2; ID=$3; STORE="$BASE/$TARGET"; JOB=''; DEADLINE=''
+ trap 'rmdir "$LOCK" /tmp/wan-identity.lock 2>/dev/null' EXIT
+ read_profile; WANT_MAC=$MAC; WANT_HOST=$HOST; plan
+ OLD_MAC=$MAC_NOW; OLD_UP=0; flags=$(cat "/sys/class/net/$TARGET/flags"); [ $((flags & 1)) = 0 ] || OLD_UP=1
+ PARENT=''; PARENT_MAC=''; PARENT_SECTION=''
+ if [ -L "/sys/class/net/$TARGET/master" ]; then
+  PARENT=$(basename "$(readlink "/sys/class/net/$TARGET/master")")
+  if [ -d "/sys/class/net/$PARENT/bridge" ]; then
+   PARENT_MAC=$(tr a-f A-F < "/sys/class/net/$PARENT/address")
+   find_parent() { local n="$1" d; config_get d "$n" name; [ "$d" != "$PARENT" ] || PARENT_SECTION=$n; }
+   config_load network; config_foreach find_parent device
+   [ -n "$PARENT_SECTION" ] || PARENT_SECTION=identity_$(printf '%s' "$PARENT" | md5sum | cut -c1-12)
+  else PARENT=''; fi
+ fi
+ JOB=$(mktemp -d /tmp/interface-identity-job.XXXXXX) || exit 1
+ cp -p /etc/config/network "$JOB/network.before"; cp -p /etc/config/wireless "$JOB/wireless.before"
+ mkdir "$JOB/delta"
+ cp /etc/config/network "$JOB/network"; cp /etc/config/wireless "$JOB/wireless"
+ if [ "$PACKAGE" = network ]; then
+  if [ -z "$(uci -q -c "$JOB" -t "$JOB/delta" get "network.$SECTION")" ]; then
+   uci -c "$JOB" -t "$JOB/delta" set "network.$SECTION=device"; uci -c "$JOB" -t "$JOB/delta" set "network.$SECTION.name=$TARGET"
+  fi
+ fi
+ uci -c "$JOB" -t "$JOB/delta" set "$PACKAGE.$SECTION.macaddr=$WANT_MAC" || exit 1
+ if [ -n "$PARENT" ]; then
+  if [ -z "$(uci -q -c "$JOB" -t "$JOB/delta" get "network.$PARENT_SECTION")" ]; then
+   uci -c "$JOB" -t "$JOB/delta" set "network.$PARENT_SECTION=device"; uci -c "$JOB" -t "$JOB/delta" set "network.$PARENT_SECTION.name=$PARENT"
+  fi
+  uci -c "$JOB" -t "$JOB/delta" set "network.$PARENT_SECTION.macaddr=$PARENT_MAC" || exit 1
+ fi
+ if [ "$PROTO" = dhcp ] && [ -n "$NET" ]; then
+  if [ -n "$WANT_HOST" ]; then uci -c "$JOB" -t "$JOB/delta" set "network.$NET.hostname=$WANT_HOST"; else uci -q -c "$JOB" -t "$JOB/delta" delete "network.$NET.hostname"; fi
+ fi
+ uci -c "$JOB" -t "$JOB/delta" commit || exit 1
+ cmp -s /etc/config/network "$JOB/network.before" && cmp -s /etc/config/wireless "$JOB/wireless.before" || { state failed '配置已被其他页面修改' 0; exit 1; }
+ state applying '正在切换接口身份' 0
+ cp "$JOB/$PACKAGE" "/etc/config/.$PACKAGE.identity" && mv "/etc/config/.$PACKAGE.identity" "/etc/config/$PACKAGE" || exit 1
+ if [ "$PACKAGE" = wireless ]; then
+  cp "$JOB/network" /etc/config/.network.identity && mv /etc/config/.network.identity /etc/config/network
+  wifi reload "$RADIO" >/dev/null 2>&1
+ else
+  set_runtime "$OLD_UP" "$WANT_MAC" > "$JOB/apply.log" 2>&1
+  RUNTIME_RC=$?
+  if [ "$PROTO" = dhcp ] && [ -n "$NET" ] && [ "$RUNTIME_RC" = 0 ]; then
+   ubus call network reload >/dev/null 2>&1; ifdown "$NET"; ifup "$NET"
+  fi
+ fi
+ PARENT_OK=1
+ [ -z "$PARENT" ] || ip link set dev "$PARENT" address "$PARENT_MAC" || PARENT_OK=0
+ success=0
+ for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  [ "$PARENT_OK" = 1 ] && [ -r "/sys/class/net/$TARGET/address" ] && [ "$(tr a-f A-F < "/sys/class/net/$TARGET/address")" = "$WANT_MAC" ] && { success=1; break; }
+  [ "$PACKAGE" = wireless ] || break
+  sleep 1
+ done
+ if [ "$success" = 1 ]; then
+  DEADLINE=$(($(date +%s)+60)); state awaiting_confirmation '60 秒内点击保留，否则自动恢复' "$DEADLINE"
+  for attempt in $(seq 1 30); do
+   sleep 2
+   json_load "$(cat "$STATE")"; json_get_var status state
+   [ "$status" != confirmed ] || { state success '接口身份已保留' 0; rm -r "$JOB"; exit 0; }
+   [ "$status" != rollback_requested ] || break
+  done
+ fi
+ restored=1
+ for package in network wireless; do
+  if ! cmp -s "$JOB/$package.before" "$JOB/$package"; then
+   if cmp -s "/etc/config/$package" "$JOB/$package"; then cp -p "$JOB/$package.before" "/etc/config/.$package.identity" && mv "/etc/config/.$package.identity" "/etc/config/$package"; else restored=0; fi
+  fi
+ done
+ if [ "$restored" = 1 ]; then
+  if [ "$PACKAGE" = wireless ]; then wifi reload "$RADIO" >/dev/null 2>&1; else set_runtime "$OLD_UP" "$OLD_MAC" >/dev/null 2>&1; fi
+  [ -z "$PARENT" ] || ip link set dev "$PARENT" address "$PARENT_MAC"
+  if [ "$success" = 1 ]; then state rolled_back '已恢复切换前的身份' 0; else state failed '驱动未接受新 MAC，已恢复配置' 0; fi
+ else state failed '检测到其他配置修改，请检查接口状态' 0; fi
+ rm -r "$JOB"
+}
+if [ "$1" = worker ]; then worker "$@"; exit $?; fi
+read -r REQUEST || true
+[ -n "$REQUEST" ] || REQUEST='{}'
+json_load "$REQUEST" 2>/dev/null || fail '请求格式无效'
+json_get_var TARGET device
+[ -n "$TARGET" ] || TARGET=$(uci -q get network.wan.device)
+valid_dev "$TARGET" || fail '无效的接口名称'
+device_info "$TARGET"
+STORE="$BASE/$TARGET"
+case "$1" in
+status)
+ if legacy_wan; then
+  result=$(/usr/libexec/wan-identity status); json_load "$result" || fail '读取原方案失败'
+  json_select current; json_add_boolean editable 1; json_add_string network wan; json_close_object
+ else generic_status; fi
+ json_add_boolean busy "$([ -d "$LOCK" ] || [ -d /tmp/wan-identity.lock ] && echo 1 || echo 0)"
+ if [ -f "$STATE" ]; then
+  json_set_namespace state savedns; json_load "$(cat "$STATE")"; json_get_var opdev device; json_get_var opstate state; json_get_var opmessage message; json_get_var opdeadline deadline; json_set_namespace "$savedns"
+  if [ "$opdev" = "$TARGET" ]; then json_add_object operation; json_add_string state "$opstate"; json_add_string message "$opmessage"; json_add_int deadline "${opdeadline:-0}"; json_close_object; fi
+ fi
+ append_interfaces; json_dump;;
+save|remove|apply)
+ [ ! -d "$LOCK" ] || fail '另一个接口正在切换'
+ [ "$EDITABLE" = 1 ] || fail "$REASON"
+ if legacy_wan; then printf '%s\n' "$REQUEST" | /usr/libexec/wan-identity "$1"; exit; fi
+ lock
+ json_load "$REQUEST"; json_get_var ID id; json_get_var NAME name; json_get_var MAC mac; json_get_var HOST hostname; json_get_var PREVIEW preview
+ if [ "$1" = save ]; then
+  MAC=$(printf '%s' "$MAC" | tr 'a-f-' 'A-F:'); valid_mac "$MAC" || fail '请输入有效的单播 MAC'
+  [ -n "$NAME" ] && [ "${#NAME}" -le 80 ] || fail '方案名称须为 1–80 个字符'
+  [ "$PROTO" = dhcp ] || HOST=''
+  [ -z "$HOST" ] || { [ "${#HOST}" -le 63 ] && printf '%s' "$HOST" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$'; } || fail 'DHCP 主机名格式无效'
+  ensure_initial
+  [ -n "$ID" ] || ID=p$(hexdump -n 8 -e '8/1 "%02x"' /dev/urandom)
+  valid_id "$ID" && [ "$ID" != "$DEFAULT" ] || fail '请复制初始方案后编辑'
+  count=$(find "$STORE/profiles" -name 'p*.json' | wc -l); [ -f "$STORE/profiles/$ID.json" ] || [ "$count" -lt 32 ] || fail '每个接口最多保存 32 组方案'
+  write_profile && ok; exit
+ fi
+ ensure_initial; read_profile
+ if [ "$1" = remove ]; then
+  [ "$ID" != "$DEFAULT" ] || fail '初始方案不能删除'
+  [ "$MAC" != "$MAC_NOW" ] || fail '请先切换到其他身份'
+  rm "$STORE/profiles/$ID.json" && ok; exit
+ fi
+ plan
+ if [ "$PREVIEW" = 1 ]; then
+  json_init; json_add_boolean ok 1; json_add_boolean preview 1; json_add_string device "$TARGET"; json_add_string package "$PACKAGE"; json_add_string section "$SECTION"; json_add_string mac "$MAC"; json_dump; exit
+ fi
+ trap - EXIT
+ /usr/libexec/interface-identity worker "$TARGET" "$ID" </dev/null >/tmp/interface-identity-worker.log 2>&1 &
+ ok;;
+confirm|rollback)
+ [ -f "$STATE" ] || fail '没有待确认的修改'
+ json_load "$(cat "$STATE")"; json_get_var dev device; json_get_var status state; json_get_var ID id; json_get_var deadline deadline
+ [ "$dev" = "$TARGET" ] && [ "$status" = awaiting_confirmation ] && [ "$(date +%s)" -lt "$deadline" ] || fail '没有待确认的修改'
+ if [ "$1" = confirm ]; then state confirmed '正在保留修改' "$deadline"; else state rollback_requested '正在恢复' "$deadline"; fi
+ ok;;
+*) fail '不支持的操作';;
+esac

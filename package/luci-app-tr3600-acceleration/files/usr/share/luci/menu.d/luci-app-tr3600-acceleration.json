@@ -1,8 +1,8 @@
 {
   "admin/network/tr3600_acceleration": {
-    "title": "硬件加速",
+    "title": "网络加速",
     "order": 65,
-    "action": { "type": "view", "path": "network/tr3600-acceleration-v1_0_3" },
+    "action": { "type": "view", "path": "network/tr3600-acceleration-v1_0_6" },
     "depends": { "acl": [ "luci-app-tr3600-acceleration" ] }
   }
 }

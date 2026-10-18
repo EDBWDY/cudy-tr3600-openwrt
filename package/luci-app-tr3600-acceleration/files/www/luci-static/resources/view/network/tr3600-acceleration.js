@@ -28,9 +28,11 @@ return view.extend({
             if (reset) self.inputs[k].checked = !!data.configured[k];
             self.inputs[k].disabled = self.busy || !L.hasViewPermission() || !data.supported[k];
             var enabled = data.runtime[k], pending = k === 'wed' && data.wed_pending;
-            self.badges[k].textContent = !data.supported[k] ? '不支持' : pending ? '待重启' : enabled ? '已开启' : '已关闭';
-            self.badges[k].className = 'acc-badge ' + (pending ? 'acc-pending' : enabled ? 'acc-on' : 'acc-off');
-            self.runtime[k].textContent = '当前状态 · ' + (enabled ? '开启' : '关闭');
+            var health = k === 'wed' && data.wed_diagnostic && data.wed_diagnostic.state;
+            var failed = health === 'failed' || health === 'not_attached';
+            self.badges[k].textContent = !data.supported[k] ? '不支持' : failed ? '未生效' : health === 'unknown' ? '状态未知' : pending ? '待重启' : enabled ? '已开启' : '已关闭';
+            self.badges[k].className = 'acc-badge ' + (failed ? 'acc-failed' : pending ? 'acc-pending' : enabled ? 'acc-on' : 'acc-off');
+            self.runtime[k].textContent = '当前状态 · ' + (failed ? '挂接失败' : health === 'unknown' ? '未知' : enabled ? '开启' : '关闭');
             self.runtime[k].hidden = !pending;
         });
         this.summary.textContent = data.runtime.hardware ? '硬件流量分载运行中' : data.runtime.software ? '软件流量分载运行中' : '常规转发';
@@ -43,6 +45,11 @@ return view.extend({
         if (data.wed_pending) notes.push(E('div', {}, 'WED 设置已保存，下次重启生效'));
         this.notes.replaceChildren.apply(this.notes, notes);
         this.notes.hidden = !notes.length;
+        var diagnostic = data.wed_diagnostic || {};
+        var wedFailed = diagnostic.state === 'failed' || diagnostic.state === 'not_attached';
+        this.wedFault.hidden = !wedFailed && diagnostic.state !== 'unknown';
+        this.wedFaultText.textContent = diagnostic.state === 'failed' ? 'WED 挂接失败，无线硬件加速未生效' : diagnostic.state === 'not_attached' ? 'WED 未挂接，无线硬件加速未生效' : '无法确认 WED 运行状态';
+        this.wedLog.textContent = diagnostic.logs || (diagnostic.logs_available ? '当前启动日志中没有 WED 相关记录' : '无法读取内核日志');
         this.changed();
     },
     changed: function() {
@@ -80,6 +87,10 @@ return view.extend({
         this.count = E('strong', { 'class': 'acc-count' });
         this.countLabel = E('span', { 'class': 'acc-muted' }, '硬件连接');
         this.notes = E('div', { 'class': 'acc-notes' });
+        this.wedFaultText = E('div', { 'role': 'alert' });
+        this.wedLog = E('pre', { 'class': 'acc-log' });
+        this.wedFault = E('div', { 'class': 'acc-wed-fault' }, [this.wedFaultText,
+            E('details', {}, [E('summary', {}, '错误日志'), this.wedLog])]);
         this.error = E('div', { 'class': 'acc-error', 'role': 'alert' });
         this.dirty = E('span', { 'class': 'acc-muted' });
         function row(key, title, subtitle) {
@@ -103,15 +114,15 @@ return view.extend({
         this.apply = E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() { return self.applySettings(); } }, '保存并应用');
         this.reset = E('button', { 'class': 'cbi-button', 'click': function() { self.error.textContent = ''; self.update(self.data, true); } }, '撤销改动');
         this.root = E('div', { 'class': 'acc-page' }, [
-            E('link', { 'rel': 'stylesheet', 'href': L.resource('tr3600-acceleration-v1_0_2.css') }),
-            E('div', { 'class': 'acc-heading' }, E('h2', {}, '硬件加速')),
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('tr3600-acceleration-v1_0_6.css') }),
+            E('div', { 'class': 'acc-heading' }, E('h2', {}, '网络加速')),
             E('div', { 'class': 'acc-panel' }, [
                 E('div', { 'class': 'acc-summary' }, [this.summary,
                     E('div', { 'class': 'acc-metric' }, [this.countLabel, this.count])]),
-                row('software', '软件流量分载', '减少 CPU 转发开销'),
-                row('hardware', '硬件流量分载', 'MediaTek PPE'),
-                row('wed', '无线加速', 'WED · 重启后生效'),
-                this.notes, this.error,
+                row('software', '软件流量分载', 'Netfilter Flowtable · 由 CPU 通过快速路径转发，减少重复处理'),
+                row('hardware', '硬件流量分载', 'MediaTek PPE · 将符合条件的连接交给硬件转发，支持以太网'),
+                row('wed', '无线加速', 'WED · 配合硬件流量分载加速 Wi-Fi 收发，重启后生效'),
+                this.notes, this.wedFault, this.error,
                 E('div', { 'class': 'acc-actions' }, [this.dirty, E('div', {}, [this.reset, this.apply])])
             ])
         ]);

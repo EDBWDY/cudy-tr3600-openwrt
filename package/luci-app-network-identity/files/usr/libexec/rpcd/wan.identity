@@ -1,0 +1,5 @@
+#!/bin/sh
+case "$1" in
+list) echo '{"status":{},"save":{"id":"","name":"","mac":"","hostname":""},"remove":{"id":""},"apply":{"id":"","preview":true}}' ;;
+call) exec /usr/libexec/wan-identity "$2" ;;
+esac

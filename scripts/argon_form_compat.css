@@ -1,0 +1,8 @@
+/* argon-block-field-float-compat */
+/* Argon makes value fields block-level at this breakpoint. Clear the floating
+   label so text and buttons do not wrap around it on narrow screens. */
+@media screen and (max-width:600px) {
+ .cbi-value > .cbi-value-field {
+  clear:left;
+ }
+}

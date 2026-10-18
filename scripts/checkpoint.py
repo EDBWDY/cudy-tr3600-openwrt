@@ -26,10 +26,24 @@ def validate_metadata(metadata, root):
 
 
 def recipe(root):
-    paths = [root / name for name in ('sources.json', 'config.seed', 'scripts/prepare.py',
+    paths = [root / name for name in ('sources.json', 'config.seed',
                                       'zerotier-config.openwrt.js')]
-    for name in ('patches', 'package', 'files'):
-        paths.extend(path for path in (root / name).rglob('*') if path.is_file())
+    validation_only = {'verify.py', 'audit_downloaded.py', 'image_extraction.py',
+                       'kernel_audit.py', 'feature_requirements.py', 'privacy_audit.py',
+                       'checkpoint.py', 'release_checkpoint.py', 'release_outputs.py',
+                       'collect-unverified.py', 'check-toolchain-reuse.py',
+                       'refresh_customizations.py', 'public_source_audit.py'}
+    experiment_build = {'sources.json', 'prepare_package.py', 'integrate_openwrt.py',
+                        'turboacc-control', 'turboacc.rpc', 'turboacc.init',
+                        'turboacc_safety.js', 'turboacc_wed.js', 'turboacc-wed'}
+    for name in ('patches', 'package', 'files', 'scripts', 'experiments/turboacc'):
+        paths.extend(path for path in (root / name).rglob('*')
+                     if path.is_file() and '__pycache__' not in path.parts
+                     and path.suffix != '.pyc'
+                     and not (name == 'scripts' and
+                              (path.name in validation_only or path.name.startswith('test_')))
+                     and not (name == 'experiments/turboacc' and
+                              path.suffix != '.patch' and path.name not in experiment_build))
     return {path.relative_to(root).as_posix(): digest(path) for path in sorted(paths)}
 
 

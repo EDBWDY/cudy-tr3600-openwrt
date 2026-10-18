@@ -13,3 +13,13 @@ __pycache__/
 *.pem
 *.yaml
 !*.yml
+
+# Private device state and local system backups
+Router_backup/
+*.private.*
+*.ubi-volume.*
+authorized_keys
+known_hosts
+AdGuardHome.yaml
+tailscaled.state
+identity.secret

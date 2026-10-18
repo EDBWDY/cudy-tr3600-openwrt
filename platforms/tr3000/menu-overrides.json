@@ -1,0 +1,12 @@
+{
+  "admin/vpn": {
+    "order": 70
+  },
+  "admin/network/tr3600_acceleration": null,
+  "admin/status/channel_analysis": {
+    "action": {
+      "type": "view",
+      "path": "status/channel_analysis-mtwifi-v7"
+    }
+  }
+}

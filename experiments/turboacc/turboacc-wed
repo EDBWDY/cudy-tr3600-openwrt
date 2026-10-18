@@ -1,0 +1,64 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# Persist mt7996e's boot parameter; never unload/reload a wireless driver.
+set -eu
+case "${1:-status}" in
+apply)
+    wanted=$(uci -q get turboacc.config.wed_enable || echo 0)
+    case "$wanted" in 0|1) :;; *) echo 'Invalid WED value' >&2; exit 1;; esac
+    if [ ! -r /sys/module/mt7996e/parameters/wed_enable ]; then
+        [ "$wanted" = 0 ] && exit 0
+        echo 'mt7996e WED parameter is unavailable' >&2; exit 1
+    fi
+    file=/etc/modules.conf
+    temp=$(mktemp /etc/modules.conf.turboacc.XXXXXX)
+    trap 'rm -f "$temp"' EXIT
+    # Keep other modules/options/comments; remove duplicate WED overrides.
+    input="$file"; [ -f "$file" ] || input=/dev/null
+    awk -v wanted="$wanted" '
+      /^[ \t]*options[ \t]+mt7996e([ \t]|$)/ {
+        comment=""; hash=index($0,"#"); if(hash){comment=substr($0,hash);$0=substr($0,1,hash-1)}
+        gsub(/[ \t]+wed_enable=[^ \t]+/,"")
+        if(!added){$0=$0 " wed_enable=" wanted; added=1}
+        print $0 " " comment; next
+      }
+      {print}
+      END{if(!added)print "options mt7996e wed_enable=" wanted}
+    ' "$input" > "$temp"
+    chmod 644 "$temp"
+    mv "$temp" "$file"
+    ;;
+status)
+    . /usr/share/libubox/jshn.sh
+    supported=0; requested=0; attached=0; pending=0
+    configured=$(uci -q get turboacc.config.wed_enable || echo 0)
+    parameter=/sys/module/mt7996e/parameters/wed_enable
+    if [ -r "$parameter" ]; then
+        supported=1
+        if grep -Eq '^(Y|1)$' "$parameter"; then requested=1; fi
+    fi
+    for file in /sys/kernel/debug/wed*/txinfo; do
+        [ -r "$file" ] || continue
+        [ -z "$(head -c 1 "$file")" ] || attached=1
+    done
+    runtime=0; [ "$requested" != 1 ] || runtime=1
+    [ "$runtime" = "$configured" ] || pending=1
+    health=disabled
+    [ "$requested" != 1 ] || health=not_attached
+    [ "$attached" != 1 ] || health=attached
+    [ "$supported" = 1 ] || health=unavailable
+    logs=$(dmesg 2>/dev/null | grep -Ei 'wed|mt799[026].*(fail|error)' | tail -n 40 || true)
+    if [ "$requested" = 1 ] && [ "$attached" != 1 ] && printf '%s' "$logs" | grep -Eqi 'fail.*attach.*wed|wed.*(fail|error)'; then health=failed; fi
+    error=$(tail -c 4096 /tmp/turboacc-last-error 2>/dev/null || true)
+    json_init
+    json_add_boolean supported "$supported"
+    json_add_boolean requested "$requested"
+    json_add_boolean attached "$attached"
+    json_add_boolean reboot_pending "$pending"
+    json_add_string health "$health"
+    json_add_string log "$logs"
+    json_add_string apply_error "$error"
+    json_dump
+    ;;
+*) echo 'Usage: turboacc-wed status|apply' >&2; exit 2;;
+esac

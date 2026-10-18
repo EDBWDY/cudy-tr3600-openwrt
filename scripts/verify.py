@@ -65,20 +65,24 @@ dnsmasq_features = verify_dnsmasq_nftset((rootfs / 'usr/sbin/dnsmasq').read_byte
 if 'nftables-json' not in packages:
     raise RuntimeError('dnsmasq nftset dependency nftables-json is missing')
 required_files = [
+    'usr/libexec/interface-identity', 'usr/libexec/wan-identity',
+    'usr/libexec/rpcd/interface.identity', 'www/cgi-bin/wan-identity-client',
+    'www/luci-static/resources/view/network/interface_identity_v5.js',
     'usr/libexec/tr3600-clients', 'usr/libexec/rpcd/tr3600.clients',
     'usr/share/tr3600-clients/engine.uc', 'etc/init.d/tr3600-clients',
     'usr/share/luci/menu.d/luci-app-tr3600-clients.json',
     'usr/share/rpcd/acl.d/luci-app-tr3600-clients.json',
     'www/luci-static/resources/view/status/tr3600-clients.js',
     'www/luci-static/resources/view/status/tr3600-clients-v1_0_16.js',
-    'usr/libexec/tr3600-acceleration', 'usr/libexec/rpcd/tr3600.acceleration',
-    'usr/share/tr3600-acceleration/engine.uc',
-    'usr/share/luci/menu.d/luci-app-tr3600-acceleration.json',
-    'usr/share/rpcd/acl.d/luci-app-tr3600-acceleration.json',
-    'www/luci-static/resources/view/network/tr3600-acceleration.js',
-    'www/luci-static/resources/view/network/tr3600-acceleration-v1_0_3.js',
-    'www/luci-static/resources/tr3600-acceleration.css',
-    'www/luci-static/resources/tr3600-acceleration-v1_0_2.css',
+    'usr/libexec/turboacc-control', 'usr/libexec/turboacc-wed',
+    'usr/libexec/rpcd/luci.turboacc', 'etc/init.d/turboacc', 'etc/config/turboacc',
+    'usr/share/luci/menu.d/luci-app-turboacc.json',
+    'usr/share/rpcd/acl.d/luci-app-turboacc.json',
+    'usr/share/turboacc/port-manifest.json',
+    'www/luci-static/resources/view/turboacc.js',
+    'www/luci-static/resources/turboacc_safety.js',
+    'www/luci-static/resources/turboacc_wed.js',
+    'www/luci-static/resources/view/services/adguardhome.js',
     'www/luci-static/resources/tr3600-clients.css',
     'usr/libexec/tr3600-fan', 'usr/libexec/rpcd/tr3600.usb',
     'etc/init.d/tr3600-fan', 'etc/config/tr3600_fan',
@@ -106,11 +110,31 @@ for name in required_files:
 for name in ['https-dns-proxy', 'libcares', 'libev']:
     if name not in packages:
         raise RuntimeError('DoH backend dependency missing: ' + name)
-for package in ['luci-app-tr3600-usb', 'luci-app-tr3600-fan', 'luci-app-tr3600-clients', 'luci-app-tr3600-acceleration']:
+for package in ['luci-app-tr3600-usb', 'luci-app-tr3600-fan', 'luci-app-tr3600-clients', 'luci-app-network-identity', 'luci-app-router-adguardhome']:
     source_files = ROOT / 'package' / package / 'files'
     for file in source_files.rglob('*'):
         if file.is_file() and (rootfs / file.relative_to(source_files)).read_bytes() != file.read_bytes():
             raise RuntimeError('Installed custom plugin differs from current source: ' + str(file))
+# Verify the new controller, guarded NAT choices and matched port provenance.
+for name, relative in {
+    'turboacc-control':'usr/libexec/turboacc-control',
+    'turboacc-wed':'usr/libexec/turboacc-wed',
+    'turboacc.rpc':'usr/libexec/rpcd/luci.turboacc',
+    'turboacc_safety.js':'www/luci-static/resources/turboacc_safety.js',
+    'turboacc_wed.js':'www/luci-static/resources/turboacc_wed.js',
+}.items():
+    if (rootfs / relative).read_bytes() != (ROOT / 'experiments/turboacc' / name).read_bytes():
+        raise RuntimeError('TurboACC installed source differs: ' + name)
+if (rootfs / 'usr/share/luci/menu.d/luci-app-tr3600-acceleration.json').exists():
+    raise RuntimeError('Obsolete acceleration controller must not coexist with TurboACC')
+cone = (rootfs / 'etc/config/turboacc').read_text()
+for expected in ["option fullcone '0'", "option fullcone_protocol 'udp'", "option wed_enable '0'"]:
+    if expected not in cone:
+        raise RuntimeError('Unsafe acceleration first-boot default: ' + expected)
+installed_port=json.loads((rootfs/'usr/share/turboacc/port-manifest.json').read_text())
+compiled_port=json.loads((SRC/'acceleration-port-manifest.json').read_text())
+if installed_port != compiled_port or installed_port['hardware_runtime_verified']:
+    raise RuntimeError('Acceleration port provenance or physical verification claim differs')
 samba = json.loads((rootfs / 'usr/share/luci/menu.d/luci-app-samba4.json').read_text())['admin/services/samba4']
 if samba['title'] != 'Samba' or samba['action']['path'] != 'samba4-tr3600-v2':
     raise RuntimeError('Samba menu presentation update is missing')
@@ -132,7 +156,7 @@ image_privacy = audit_image(rootfs)
 core_header = (rootfs / 'etc/openclash/core/clash_meta').read_bytes()[:20]
 if core_header[:4] != b'\x7fELF' or int.from_bytes(core_header[18:20], 'little') != 183:
     raise RuntimeError('Installed mihomo is not an AArch64 ELF binary')
-for binary in ['tailscale', 'tailscaled', 'zerotier-one', 'usbmuxd', 'idevicepair', 'smbd']:
+for binary in ['tailscale', 'tailscaled', 'zerotier-one', 'usbmuxd', 'idevicepair', 'smbd', 'AdGuardHome']:
     if not any((rootfs / directory / binary).exists() for directory in ['usr/bin', 'usr/sbin', 'bin', 'sbin']):
         raise RuntimeError(f'Required VPN/storage/pairing executable missing: {binary}')
 module_names = {path.name for path in (rootfs / 'lib/modules').rglob('*.ko')}

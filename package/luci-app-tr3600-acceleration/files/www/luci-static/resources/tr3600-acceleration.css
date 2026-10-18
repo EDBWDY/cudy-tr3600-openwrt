@@ -29,3 +29,9 @@
 .acc-page .acc-actions>div{display:flex;gap:10px;margin-left:auto}
 .acc-page .acc-actions .cbi-button{margin:0!important;float:none!important;border-radius:4px!important;box-shadow:none!important}
 @media(max-width:600px){.acc-page .acc-heading{padding:16px}.acc-page .acc-summary{padding:15px 16px;gap:10px}.acc-page .acc-card{padding:18px 16px;column-gap:12px;grid-template-columns:minmax(0,1fr) 44px 42px}.acc-page h3{font-size:14px}.acc-page .acc-metric .acc-muted{font-size:11px}.acc-page .acc-notes{padding:12px 16px 0}.acc-page .acc-actions{padding:18px 16px;flex-wrap:wrap}}
+
+.acc-page .acc-failed,.acc-page .acc-wed-fault{color:#d65565}
+.acc-page .acc-wed-fault{margin:14px 22px 0;font-size:12px;line-height:1.7}
+.acc-page .acc-wed-fault[hidden]{display:none}
+.acc-page .acc-wed-fault summary{cursor:pointer;margin-top:6px}
+.acc-page .acc-log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;background:var(--acc-soft);color:var(--acc-text);border:1px solid var(--acc-line);border-radius:4px;padding:12px;font-size:12px;line-height:1.6}

@@ -1,0 +1,32 @@
+#!/bin/sh
+# Read only channel geometry from the vendor driver; never expose the full log.
+/usr/sbin/iwpriv ra0 show devinfo >/dev/null 2>&1 || exit 1
+dmesg | awk '
+function flush() { if (kind == "AP" && chan > 0 && center > 0) { c[band]=chan; x[band]=center } }
+/==========wdev/ { flush(); kind=""; chan=0; center=0; band=-1 }
+/ type[[:space:]]*:/ { kind=$NF }
+/ channel[[:space:]]*:/ { chan=$NF+0 }
+/ cen_ch1[[:space:]]*:/ { center=$NF+0 }
+/ band_id[[:space:]]*:/ { band=$NF+0 }
+END { flush(); printf "{\"radios\":["; sep=""; for (b in c) { printf "%s{\"band\":%d,\"channel\":%d,\"center\":%d}",sep,(b==0?2:5),c[b],x[b]; sep="," } print "] ,\"peers\":[" }
+'
+
+{ /usr/sbin/iwpriv ra0 get_site_survey; /usr/sbin/iwpriv rax0 get_site_survey; } 2>/dev/null | awk '
+BEGIN { sep="" }
+{ for (i=1;i<=NF;i++) if ($i ~ /^[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:/ && length($i)==17) {
+  mode=$(i+4); sec=$(i+1);
+  if (mode ~ /^11[a-zA-Z0-9\/]+$/ && sec ~ /^[a-zA-Z0-9\/_-]+$/) { printf "%s{\"bssid\":\"%s\",\"technology\":\"%s\",\"security\":\"%s\"}",sep,tolower($i),mode,sec; sep="," }
+} }
+END { print "],\"channels\":[" }
+'
+
+{
+ for dev in ra0 rax0; do
+  result=$(/usr/libexec/tr3000-scan-export "$dev" 2>/dev/null) && printf '%s\n' "$result"
+ done
+} | awk '
+BEGIN { sep="" }
+NF==4 && length($1)==17 && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && $4 ~ /^[0-3]$/ {
+ printf "%s{\"bssid\":\"%s\",\"channel\":%d,\"center\":%d,\"vht\":%d}",sep,$1,$2,$3,$4; sep="," }
+END { print "]}" }
+'

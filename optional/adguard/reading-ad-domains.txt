@@ -1,0 +1,10 @@
+! Optional DNS rules for reading-app video ads
+||v11-reading-ad.qznovelvod.com^
+||v13-reading-ad.qznovelvod.com^
+||v26-reading-ad.qznovelvod.com^
+||v5-bd-daily-reading-ad.qznovelvod.com^
+||v5-reading-ad.qznovelvod.com^
+||v5-se-sjy-daily-reading-ad.qznovelvod.com^
+||v6-reading-ad.qznovelvod.com^
+||v9-reading-ad.qznovelvod.com^
+||v96-reading-ad.qznovelvod.com^

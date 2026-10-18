@@ -1,0 +1,1 @@
+{"luci-mod-status-channel_analysis": {"read": {"file": {"/usr/libexec/tr3000-channel-geometry": ["exec"]}, "ubus": {"file": ["exec"]}}}}

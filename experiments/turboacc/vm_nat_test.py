@@ -157,7 +157,10 @@ def main():
     results['apply_real_fw4_and_tcpcca']=True
     rpc='/usr/libexec/rpcd/luci.turboacc'
     methods=json.loads(run(rpc,'list').stdout)
-    assert len(methods)==5
+    assert {'getSystemFeatures','getFastPathStat','getFullConeStat','getTCPCCAStat','getMTKPPEStat','getWedStat'} == set(methods)
+    wed=json.loads(run(rpc,'call','getWedStat').stdout)
+    assert wed['supported'] is False and wed['attached'] is False and wed['health']=='unavailable'
+    results['wed_diagnostics_does_not_claim_nonexistent_hardware']=True
     features=json.loads(run(rpc,'call','getSystemFeatures').stdout)
     assert features['hasFLOWOFFLOADING'] is True and features['hasMEDIATEKHNAT'] is False
     assert 'Netfilter' in json.loads(run(rpc,'call','getFastPathStat').stdout)['type']

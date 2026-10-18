@@ -1,0 +1,1 @@
+{"luci-app-interface-identity": {"description": "Manage MAC identities of local network interfaces", "read": {"ubus": {"interface.identity": ["status"]}}, "write": {"ubus": {"interface.identity": ["save", "remove", "apply", "confirm", "rollback"]}}}}

@@ -1,0 +1,80 @@
+name: Validate preserved TR3600 candidate without recompiling
+on:
+  workflow_dispatch:
+    inputs:
+      checkpoint_tag:
+        description: Complete firmware checkpoint Release tag
+        required: true
+      candidate_release:
+        description: Existing candidate Release tag (outputs are never deleted)
+        required: true
+      source_ref:
+        description: Exact public source ref; may contain validation-only repairs
+        required: true
+  workflow_call:
+    inputs:
+      checkpoint_tag:
+        type: string
+        required: true
+      candidate_release:
+        type: string
+        required: true
+      source_ref:
+        type: string
+        required: true
+    secrets:
+      TR3600_CHECKPOINT_KEY_V1:
+        required: true
+permissions:
+  contents: write
+env:
+  GH_REPO: ${{ github.repository }}
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout public verification recipe
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - name: Prepare verifier environment (no compilation)
+        run: bash scripts/environment.sh
+      - name: Restore already compiled tree without invoking make
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECKPOINT_KEY: ${{ secrets.TR3600_CHECKPOINT_KEY_V1 }}
+          CHECKPOINT_TAG: ${{ inputs.checkpoint_tag }}
+        run: python3 -u scripts/release_checkpoint.py restore "$CHECKPOINT_TAG" verify
+      - name: Validate image contents and privacy independently
+        id: image
+        continue-on-error: true
+        run: |
+          mkdir -p validation-reports
+          python3 -u scripts/verify.py 2>&1 | tee validation-reports/image-validation.log
+      - name: Run source regression checks independently of compiler and image preservation
+        id: regressions
+        continue-on-error: true
+        run: |
+          mkdir -p validation-reports
+          python3 -m unittest discover -s scripts -p 'test_*.py' 2>&1 | tee validation-reports/source-tests.log
+      - name: Preserve validation reports even if a verifier fails
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RELEASE: ${{ inputs.candidate_release }}
+          IMAGE_OUTCOME: ${{ steps.image.outcome }}
+          SOURCE_OUTCOME: ${{ steps.regressions.outcome }}
+        run: |
+          mkdir -p validation-reports
+          python3 -c 'import os,json,pathlib; pathlib.Path("validation-reports/validation-status.json").write_text(json.dumps({"image":os.environ["IMAGE_OUTCOME"],"source_tests":os.environ["SOURCE_OUTCOME"],"physical_wed_verified":False,"flashed":False},indent=2)+"\n")'
+          python3 scripts/release_outputs.py "$CANDIDATE_RELEASE" validation-reports --reports
+          if test "$IMAGE_OUTCOME" = success; then
+            python3 scripts/release_outputs.py "$CANDIDATE_RELEASE" artifacts --reports
+          fi
+      - name: Report failed validation without triggering a firmware rebuild
+        if: steps.image.outcome != 'success' || steps.regressions.outcome != 'success'
+        run: |
+          echo 'Existing candidate and compiler checkpoint remain preserved. Repair or rerun validation only.'
+          exit 1

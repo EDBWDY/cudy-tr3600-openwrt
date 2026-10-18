@@ -3,7 +3,7 @@ name: TR3600 acceleration backend compile probe
 on:
   workflow_dispatch:
   push:
-    branches: [turboacc-compile-probe]
+    branches: [turboacc-compile-probe, firmware-2026-10]
     paths:
       - '.github/workflows/acceleration-probe.yml'
       - 'experiments/turboacc/**'

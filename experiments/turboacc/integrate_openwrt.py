@@ -55,6 +55,9 @@ def integrate(source):
         'live_router_changes':False,
     }
     (source/'acceleration-port-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+    installed=source/'package/custom/luci-app-turboacc-mtk/root/usr/share/turboacc/port-manifest.json'
+    installed.parent.mkdir(parents=True,exist_ok=True)
+    installed.write_text(json.dumps(manifest,indent=2)+'\n')
     return manifest
 
 

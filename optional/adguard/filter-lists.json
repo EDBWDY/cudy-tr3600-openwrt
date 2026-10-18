@@ -1,0 +1,10 @@
+[
+  {
+    "name": "AWAvenue Ads Rule (ads only)",
+    "url": "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Adguard-Only.Ads.txt"
+  },
+  {
+    "name": "anti-AD",
+    "url": "https://anti-ad.net/easylist.txt"
+  }
+]

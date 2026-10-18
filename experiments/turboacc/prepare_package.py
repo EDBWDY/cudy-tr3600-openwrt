@@ -25,16 +25,28 @@ def prepare(destination):
             target=destination/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(source.read())
     for source,path in [
         ('turboacc-control','root/usr/libexec/turboacc-control'),
+        ('turboacc-wed','root/usr/libexec/turboacc-wed'),
         ('turboacc.rpc','root/usr/libexec/rpcd/luci.turboacc'),
         ('turboacc.init','root/etc/init.d/turboacc'),
         ('turboacc_safety.js','htdocs/luci-static/resources/turboacc_safety.js'),
+        ('turboacc_wed.js','htdocs/luci-static/resources/turboacc_wed.js'),
     ]:
         target=destination/path;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(HERE/source,target);target.chmod(0o755)
     frontend=destination/'htdocs/luci-static/resources/view/turboacc.js'
     text=frontend.read_text()
     marker="'require view';"
     if text.count(marker)!=1:raise RuntimeError('Pinned TurboACC imports differ')
-    text=text.replace(marker,marker+"\n'require turboacc_safety';")
+    text=text.replace(marker,marker+"\n'require turboacc_safety';\n'require turboacc_wed';")
+    if text.count('return m.render();') != 1:raise RuntimeError('Pinned TurboACC rendering changed')
+    text=text.replace('return m.render();','return turboacc_wed.render(m);')
+    text=text.replace("_('Flow offloading')", "_('Netfilter flow offload')")
+    # The vendor driver controls have no corresponding mainline implementation.
+    # Remove those options, instead of leaving misleading settings in the UI.
+    start=text.index("\t\to = s.option(form.Flag, 'fastpath_mh_eth_hnat',")
+    end=text.index("\t\to = s.option(form.ListValue, 'fullcone',",start)
+    text=text[:start]+text[end:]
+    text=text.replace('Requires hardware NAT support. Implemented at least for mt7621.',
+                      'MediaTek PPE hardware flow offload for eligible routed Ethernet traffic. WED additionally connects supported Wi-Fi traffic to PPE. Proxy and locally terminated traffic may not be offloaded.')
     marker="\t\to.value('0', _('Disable'))\n\t\to.value('2', _('Boardcom_FULLCONE_NAT'));"
     if text.count(marker)!=1:raise RuntimeError('Pinned Full Cone option differs')
     choices="\t\to.value('0', _('System default NAT'));\n\t\to.value('1', _('Address-restricted cone NAT (UDP)'));\n\t\to.value('2', _('Full Cone NAT (UDP)'));"
@@ -46,6 +58,21 @@ def prepare(destination):
     text=text.replace("_('Full Cone NAT')","_('UDP NAT mode')").replace("_('Full cone NAT')","_('UDP NAT mode')")
     frontend.write_text(text)
     translations={
+        'Network acceleration':'网络加速',
+        'Netfilter flow offload':'Netfilter 软件流量分载',
+        'WED wireless acceleration':'WED 无线加速',
+        'Enable WED at next boot':'下次启动启用 WED',
+        'WED device attached; physical throughput is not measured here':'WED 设备已附加；此处不代表已测得硬件吞吐',
+        'WED is disabled':'WED 已关闭',
+        'The mt7996e WED parameter is unavailable':'mt7996e 的 WED 参数不可用',
+        'WED was requested, but no wireless device attached':'已请求启用 WED，但没有无线设备成功附加',
+        'WED initialization failed; see the error log':'WED 初始化失败，请查看错误日志',
+        'WED status unavailable':'WED 状态不可用',
+        'A reboot is required to apply the saved WED setting':'已保存的 WED 设置需重启后生效',
+        'No WED kernel messages':'暂无 WED 内核日志',
+        'WED error log':'WED 错误日志',
+        'Uses the paired MediaTek WED and mt76 driver. Saving never reloads Wi-Fi or reboots the router. Hardware forwarding still requires a controlled device test.':'使用配套的 MediaTek WED 与 mt76 驱动。保存不会重载 Wi-Fi 或重启路由器；硬件转发仍需受控实机验证。',
+        'MediaTek PPE hardware flow offload for eligible routed Ethernet traffic. WED additionally connects supported Wi-Fi traffic to PPE. Proxy and locally terminated traffic may not be offloaded.':'MediaTek PPE 可分载符合条件的以太网路由流量；WED 将支持的 Wi-Fi 流量接入 PPE。代理及由本机终止的连接可能无法分载。',
         'System default NAT':'系统默认 NAT',
         'UDP NAT mode':'UDP NAT 模式',
         'Address-restricted cone NAT (UDP)':'受限锥形 NAT（按来源 IP，UDP）',
@@ -64,7 +91,14 @@ def prepare(destination):
             for original,translation in translations.items():
                 output.write('\nmsgid '+json.dumps(original,ensure_ascii=False)+'\nmsgstr '+json.dumps(translation if translated else '',ensure_ascii=False)+'\n')
     target=destination/'root/etc/config/turboacc';target.parent.mkdir(parents=True,exist_ok=True)
-    target.write_text("config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '1'\n option fullcone '0'\n option fullcone_protocol 'udp'\n option tcpcca 'cubic'\n")
+    target.write_text("config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '1'\n option fullcone '0'\n option fullcone_protocol 'udp'\n option wed_enable '0'\n option tcpcca 'cubic'\n")
+    acl=destination/'root/usr/share/rpcd/acl.d/luci-app-turboacc.json'
+    values=json.loads(acl.read_text())
+    values['luci-app-turboacc']['read']['ubus']['luci.turboacc'].append('getWedStat')
+    acl.write_text(json.dumps(values,indent=2)+'\n')
+    menu=destination/'root/usr/share/luci/menu.d/luci-app-turboacc.json'
+    values=json.loads(menu.read_text());values['admin/network/turboacc']['title']='Network acceleration'
+    menu.write_text(json.dumps(values,indent=2)+'\n')
     (destination/'Makefile').write_text('''# SPDX-License-Identifier: GPL-3.0-only
 # Frontend: Copyright (C) 2018 Lean; Copyright (C) 2019-2022 ImmortalWrt.org
 include $(TOPDIR)/rules.mk

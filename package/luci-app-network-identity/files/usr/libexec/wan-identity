@@ -1,0 +1,209 @@
+#!/bin/sh
+# Local, authenticated rpcd backend. No arbitrary command/path/interface arguments.
+. /usr/share/libubox/jshn.sh
+umask 077
+STORE=/etc/wan-identity
+LOCK=/tmp/wan-identity.lock
+STATE=/tmp/wan-identity-state.json
+DEFAULT=p0000000000000000
+mkdir -p "$STORE/profiles"
+
+reply_error() { json_init; json_add_boolean ok 0; json_add_string error "$1"; json_dump; exit 0; }
+reply_ok() { json_init; json_add_boolean ok 1; json_dump; }
+valid_id() { echo "$1" | grep -Eq '^p[0-9a-f]{16}$'; }
+lock() { mkdir "$LOCK" 2>/dev/null || reply_error '正在切换或保存，请稍后再试。'; trap 'rmdir "$LOCK" 2>/dev/null' EXIT; }
+valid_identity() {
+ echo "$MAC" | grep -Eq '^[0-9A-F][02468ACE](:[0-9A-F]{2}){5}$' || reply_error '请输入有效的单播 MAC 地址。'
+ [ "$MAC" != '00:00:00:00:00:00' ] || reply_error 'MAC 地址不能全为零。'
+ [ -n "$NAME" ] && [ "${#NAME}" -le 80 ] || reply_error '方案名称须为 1–80 个字符。'
+ [ -z "$HOST" ] || { [ "${#HOST}" -le 63 ] && echo "$HOST" | grep -Eq '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$'; } || reply_error '主机名须为 1–63 位字母、数字或中划线，首尾不能是中划线。'
+}
+load_profile() {
+ valid_id "$ID" || reply_error '无效的方案标识。'
+ [ -f "$STORE/profiles/$ID.json" ] || reply_error '方案不存在。'
+ json_load "$(cat "$STORE/profiles/$ID.json")" || reply_error '方案文件损坏。'
+ json_get_var NAME name; json_get_var MAC mac; json_get_var HOST hostname
+ # The initial profile always follows the live system hostname, including old snapshots.
+ [ "$ID" != "$DEFAULT" ] || HOST=''
+ valid_identity
+}
+identity_matches() {
+ [ "$1" = "$CURRENT_MAC" ] && [ "${2:-$SYSTEM_HOST}" = "$CURRENT_HOST" ] || return 1
+ if [ -n "$2" ]; then [ "$2" = "$CONFIG_HOST" ]; else [ -z "$CONFIG_HOST" ]; fi
+}
+write_profile() {
+ json_init; json_add_string id "$ID"; json_add_string name "$NAME"; json_add_string mac "$MAC"; json_add_string hostname "$HOST"
+ json_dump > "$STORE/profiles/.$ID.tmp" && mv "$STORE/profiles/.$ID.tmp" "$STORE/profiles/$ID.json"
+}
+get_current() {
+ DEV=$(uci -q get network.wan.device)
+ [ "$DEV" = eth0 ] || reply_error '当前版本仅管理已确认的独立 eth0 WAN 端口。'
+ PROTO=$(uci -q get network.wan.proto)
+ CURRENT_MAC=$(tr 'a-f' 'A-F' < /sys/class/net/eth0/address)
+ SYSTEM_HOST=$(uci -q get system.@system[0].hostname)
+ CONFIG_HOST=$(uci -q get network.wan.hostname)
+ CURRENT_HOST=${CONFIG_HOST:-$SYSTEM_HOST}
+ STATUS=$(ubus call network.interface.wan status 2>/dev/null)
+ UP=0; IP=''; REPORTED=''
+ if json_load "$STATUS"; then
+  json_get_var UP up
+  json_select ipv4-address 2>/dev/null && { json_select 1 2>/dev/null && json_get_var IP address; }
+  json_load "$STATUS"; json_select data 2>/dev/null && json_get_var REPORTED hostname
+ fi
+}
+status() {
+ get_current
+ OPSTATE=''; OPMESSAGE=''; OPID=''
+ if [ -f "$STATE" ]; then json_load "$(cat "$STATE")"; json_get_var OPSTATE state; json_get_var OPMESSAGE message; json_get_var OPID id; fi
+ json_init; json_add_boolean ok 1; json_add_string version '1.0.1'
+ json_add_object current
+ json_add_string mac "$CURRENT_MAC"; json_add_string hostname "$CURRENT_HOST"; json_add_string reported "$REPORTED"
+ json_add_string system_hostname "$SYSTEM_HOST"; json_add_string device "$DEV"; json_add_string proto "$PROTO"; json_add_string ipv4 "$IP"; json_add_boolean up "${UP:-0}"
+ json_close_object
+ json_add_object operation; json_add_string state "$OPSTATE"; json_add_string message "$OPMESSAGE"; json_add_string id "$OPID"; json_close_object
+ json_add_boolean busy "$([ -d "$LOCK" ] && echo 1 || echo 0)"
+ json_add_array profiles
+ # Use a second namespace so profile parsing cannot overwrite the response.
+ for profile in "$STORE"/profiles/p*.json; do
+  [ -f "$profile" ] || continue
+  json_set_namespace profile oldns; json_load "$(cat "$profile")"
+  json_get_var pid id; json_get_var pname name; json_get_var pmac mac; json_get_var phost hostname
+  json_set_namespace "$oldns"
+  [ "$pid" != "$DEFAULT" ] || phost=''
+  json_add_object ''; json_add_string id "$pid"; json_add_string name "$pname"; json_add_string mac "$pmac"; json_add_string hostname "$phost"
+  json_add_boolean initial "$([ "$pid" = "$DEFAULT" ] && echo 1 || echo 0)"
+  json_add_boolean active "$(identity_matches "$pmac" "$phost" && echo 1 || echo 0)"
+  json_close_object
+ done
+ json_close_array; json_dump
+}
+set_state() {
+ json_init; json_add_string state "$1"; json_add_string message "$2"; json_add_string id "$ID"
+ json_dump > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+}
+plan() {
+ get_current
+ [ "$PROTO" = dhcp ] || reply_error '主机名上报功能仅支持 DHCP WAN；当前协议不能直接切换。'
+ [ -z "$(uci -q changes network)" ] || reply_error '网络配置存在尚未提交的修改，请先完成或撤销。'
+ # Refuse bridges or other logical interfaces sharing the physical WAN, except WAN6.
+ . /lib/functions.sh
+ UNSAFE=0; DEVICE_SECTION=''
+ find_section() {
+  local section="$1" type dev name
+  config_get type "$section" TYPE
+  if [ "$type" = device ]; then
+   config_get name "$section" name
+   [ "$name" != eth0 ] || DEVICE_SECTION=$section
+   config_get dev "$section" ports
+   case " $dev " in *' eth0 '*) UNSAFE=1;; esac
+  elif [ "$type" = interface ] && [ "$section" != wan ] && [ "$section" != wan6 ]; then
+   config_get dev "$section" device
+   [ "$dev" != eth0 ] || UNSAFE=1
+  fi
+ }
+ config_load network
+ config_foreach find_section
+ [ "$UNSAFE" = 0 ] || reply_error 'eth0 被其他网络共用，已停止自动修改。'
+ [ -n "$DEVICE_SECTION" ] || DEVICE_SECTION=wan_identity_eth0
+ [ "$(uci -q get "network.$DEVICE_SECTION")" != interface ] || reply_error '设备配置名称冲突。'
+}
+worker() {
+ # The calling RPC owns the directory lock; this detached worker releases it.
+ worker_cleanup() {
+  local final_state
+  if [ -f "$STATE" ]; then
+   json_load "$(cat "$STATE")"; json_get_var final_state state
+   [ "$final_state" != applying ] || set_state failed '切换任务未完成，请检查 WAN 状态后重试。'
+  fi
+  [ -z "$JOB" ] || [ ! -d "$JOB" ] || rm -r "$JOB"
+  rmdir "$LOCK" 2>/dev/null
+ }
+ JOB=''
+ trap worker_cleanup EXIT
+ trap 'exit 1' HUP INT TERM
+ ID=$2; load_profile; plan
+ JOB=$(mktemp -d /tmp/wan-identity-job.XXXXXX) || exit 1
+ mkdir "$JOB/delta"
+ cp -p /etc/config/network "$JOB/original"
+ cp -p /etc/config/network "$JOB/network"
+ uci -c "$JOB" -t "$JOB/delta" set "network.$DEVICE_SECTION=device" &&
+ uci -c "$JOB" -t "$JOB/delta" set "network.$DEVICE_SECTION.name=eth0" &&
+ uci -c "$JOB" -t "$JOB/delta" set "network.$DEVICE_SECTION.macaddr=$MAC" || { set_state failed '准备配置失败，未修改 WAN。'; exit 1; }
+ uci -c "$JOB" -t "$JOB/delta" -q delete network.wan.macaddr
+ if [ -n "$HOST" ]; then uci -c "$JOB" -t "$JOB/delta" set "network.wan.hostname=$HOST"; else uci -c "$JOB" -t "$JOB/delta" -q delete network.wan.hostname; fi
+ uci -c "$JOB" -t "$JOB/delta" commit network || { set_state failed '准备配置失败，未修改 WAN。'; exit 1; }
+ # Do not overwrite concurrent edits made while preparing the candidate.
+ cmp -s /etc/config/network "$JOB/original" || { set_state failed '网络配置已被其他页面修改，请重试。'; exit 1; }
+ cp -p "$JOB/original" "$STORE/network.previous"
+ cp "$JOB/network" /etc/config/.network.wan-identity && mv /etc/config/.network.wan-identity /etc/config/network
+ set_state applying '正在更新 WAN 身份并重新获取地址…'
+ ubus call network reload >/dev/null 2>&1
+ # Explicit renew reconnects DHCP even when only the hostname changed.
+ ifdown wan; ifup wan
+ wanted_mac=$MAC; wanted_host=${HOST:-$SYSTEM_HOST}
+ attempt=0
+ while [ "$attempt" -lt 30 ]; do
+  sleep 2; attempt=$((attempt + 1)); get_current
+  if [ "$CURRENT_MAC" = "$wanted_mac" ] && [ "$UP" = 1 ] && [ -n "$IP" ] && [ "$REPORTED" = "$wanted_host" ]; then
+   set_state success '切换成功，WAN 已重新获取地址。'
+   rm -r "$JOB"; exit 0
+  fi
+ done
+ # Roll back only if the candidate remains unchanged; preserve concurrent edits.
+ if cmp -s /etc/config/network "$JOB/network"; then
+  cp -p "$JOB/original" /etc/config/.network.wan-identity && mv /etc/config/.network.wan-identity /etc/config/network
+  ubus call network reload >/dev/null 2>&1; ifdown wan; ifup wan
+  set_state rolled_back '60 秒内未确认新身份联网，已恢复切换前的配置。'
+ else set_state failed '未确认新身份联网；检测到其他网络修改，请手动检查 WAN。'; fi
+ rm -r "$JOB"
+}
+
+case "$1" in
+init)
+ lock
+ get_current
+ if [ ! -f "$STORE/profiles/$DEFAULT.json" ]; then
+  cp -p /etc/config/network "$STORE/network.initial"
+  ID=$DEFAULT; NAME='初始身份'; MAC=$CURRENT_MAC; HOST=''; write_profile
+ else
+  ID=$DEFAULT; load_profile; HOST=''; write_profile
+ fi
+ mkdir -p /lib/upgrade/keep.d
+ printf '/etc/wan-identity/\n' > /lib/upgrade/keep.d/wan-identity
+ reply_ok ;;
+status) status ;;
+worker) worker "$@" ;;
+save)
+ lock
+ read -r REQUEST; json_load "$REQUEST" || reply_error '请求格式无效。'
+ json_get_var ID id; json_get_var NAME name; json_get_var MAC mac; json_get_var HOST hostname
+ MAC=$(printf '%s' "$MAC" | tr 'a-f-' 'A-F:')
+ valid_identity
+ if [ -z "$ID" ]; then
+  count=$(find "$STORE/profiles" -name 'p*.json' | wc -l)
+  [ "$count" -lt 32 ] || reply_error '最多保存 32 组方案。'
+  ID=p$(hexdump -n 8 -e '8/1 "%02x"' /dev/urandom)
+ else valid_id "$ID" && [ -f "$STORE/profiles/$ID.json" ] || reply_error '方案不存在。'; fi
+ [ "$ID" != "$DEFAULT" ] || reply_error '初始身份已保留，请复制为新方案后编辑。'
+ write_profile || reply_error '保存失败。'
+ reply_ok ;;
+remove)
+ lock; read -r REQUEST; json_load "$REQUEST" || reply_error '请求格式无效。'; json_get_var ID id
+ valid_id "$ID" || reply_error '无效的方案标识。'
+ [ "$ID" != "$DEFAULT" ] || reply_error '初始身份用于恢复，不能删除。'
+ load_profile; get_current
+ identity_matches "$MAC" "$HOST" && reply_error '请先切换到其他身份，再删除正在使用的方案。'
+ rm "$STORE/profiles/$ID.json" || reply_error '删除失败。'; reply_ok ;;
+apply)
+ lock; read -r REQUEST; json_load "$REQUEST" || reply_error '请求格式无效。'; json_get_var ID id; json_get_var PREVIEW preview
+ load_profile; plan
+ if [ "$PREVIEW" = 1 ]; then
+  json_init; json_add_boolean ok 1; json_add_string device_section "$DEVICE_SECTION"; json_add_string mac "$MAC"; json_add_string hostname "${HOST:-$SYSTEM_HOST}"; json_add_boolean preview 1; json_dump; exit 0
+ fi
+ identity_matches "$MAC" "$HOST" && { reply_ok; exit 0; }
+ set_state applying '正在准备切换…'
+ trap - EXIT
+ /usr/libexec/wan-identity worker "$ID" </dev/null >/tmp/wan-identity-worker.log 2>&1 &
+ reply_ok ;;
+*) reply_error '不支持的操作。';;
+esac

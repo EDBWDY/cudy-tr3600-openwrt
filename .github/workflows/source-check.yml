@@ -1,0 +1,37 @@
+name: Public source preparation and checkpoint regression checks
+on:
+  push:
+    branches: [firmware-2026-10]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install source-check prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y zstd pigz python3-cryptography gettext gawk libncurses-dev libssl-dev rsync unzip file wget zlib1g-dev python3-setuptools
+      - name: Check public source privacy
+        run: python3 scripts/public_source_audit.py
+      - name: Check source regressions (independent of firmware compilation)
+        id: tests
+        continue-on-error: true
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Prepare real pinned OpenWrt sources and check defconfig
+        run: python3 -u scripts/prepare.py
+      - name: Check installed TurboACC syntax and translation catalogs
+        run: |
+          sh -n openwrt/package/custom/luci-app-turboacc-mtk/root/usr/libexec/turboacc-control
+          sh -n openwrt/package/custom/luci-app-turboacc-mtk/root/usr/libexec/turboacc-wed
+          sh -n openwrt/package/custom/luci-app-turboacc-mtk/root/usr/libexec/rpcd/luci.turboacc
+          for script in openwrt/package/custom/luci-app-turboacc-mtk/htdocs/luci-static/resources/*.js openwrt/package/custom/luci-app-turboacc-mtk/htdocs/luci-static/resources/view/*.js; do node --check "$script"; done
+          msgfmt --check -o /tmp/turboacc.mo openwrt/package/custom/luci-app-turboacc-mtk/po/zh_Hans/turboacc.po
+      - name: Source regression outcome
+        if: steps.tests.outcome != 'success'
+        run: exit 1
