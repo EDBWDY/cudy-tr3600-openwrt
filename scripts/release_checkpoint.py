@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from checkpoint import recipe, digest
@@ -22,7 +23,13 @@ CHUNK = 128 * 1024 * 1024
 
 
 def gh(*args, **kw):
-    return subprocess.run(['gh', *map(str, args)], check=True, **kw)
+    for attempt in range(3):
+        try:
+            return subprocess.run(['gh', *map(str, args)], check=True, **kw)
+        except subprocess.CalledProcessError:
+            if attempt == 2:
+                raise
+            time.sleep(5 * (attempt + 1))
 
 
 def cipher():
@@ -34,14 +41,22 @@ def cipher():
 
 def associated(metadata, index):
     return json.dumps({k: metadata[k] for k in
-                       ('format', 'workspace', 'recipe', 'source_commit', 'stage')},
+                       ('format', 'workspace', 'recipe', 'source_commit', 'stage',
+                        'stage_complete', 'config_sha256', 'run_id')},
                       sort_keys=True).encode() + b':' + str(index).encode()
 
 
 def create_release(tag, title):
-    gh('release', 'create', tag, '--target', os.environ['GITHUB_SHA'],
-       '--title', title, '--prerelease', '--notes',
-       'Compiler checkpoint only. Not a firmware release or hardware validation.')
+    try:
+        gh('release', 'create', tag, '--target', os.environ['GITHUB_SHA'],
+           '--title', title, '--prerelease', '--notes',
+           'Compiler checkpoint only. Not a firmware release or hardware validation.')
+    except subprocess.CalledProcessError:
+        # A successful create can be followed by a transient lost response.
+        existing = subprocess.check_output(['gh', 'release', 'view', tag, '--json',
+                                           'targetCommitish', '--jq', '.targetCommitish'], text=True).strip()
+        if existing != os.environ['GITHUB_SHA']:
+            raise RuntimeError('Existing checkpoint tag belongs to a different source')
 
 
 def save(tag, stage):
@@ -79,7 +94,7 @@ def save(tag, stage):
                 name = f'compiler-{index:05d}.zst.aesgcm'
                 path = Path(temporary) / name
                 path.write_bytes(encrypted)
-                gh('release', 'upload', tag, path)
+                gh('release', 'upload', tag, path, '--clobber')
                 metadata['parts'].append({'name': name, 'bytes': len(encrypted),
                                           'sha256': hashlib.sha256(encrypted).hexdigest()})
                 path.unlink()
@@ -90,7 +105,7 @@ def save(tag, stage):
             manifest = Path(temporary) / 'checkpoint.json'
             manifest.write_text(json.dumps(metadata, indent=2) + '\n')
             # Publish the manifest last: an interrupted save is never restorable.
-            gh('release', 'upload', tag, manifest)
+            gh('release', 'upload', tag, manifest, '--clobber')
     finally:
         if zstd.poll() is None:
             zstd.kill()
@@ -108,7 +123,7 @@ def restore(tag, next_stage, refresh_target=False):
     aes = cipher()
     with tempfile.TemporaryDirectory(prefix='checkpoint-') as temporary:
         folder = Path(temporary)
-        gh('release', 'download', tag, '-p', 'checkpoint.json', '-D', folder)
+        gh('release', 'download', tag, '-p', 'checkpoint.json', '-D', folder, '--clobber')
         metadata = json.loads((folder / 'checkpoint.json').read_text())
         if metadata['format'] != 'tr3600-release-aesgcm-zstd-v1':
             raise RuntimeError('Unknown checkpoint format')
@@ -135,7 +150,7 @@ def restore(tag, next_stage, refresh_target=False):
                 if part['name'] != expected or part['bytes'] > CHUNK + 28:
                     raise RuntimeError('Invalid checkpoint chunk manifest')
                 path = folder / expected
-                gh('release', 'download', tag, '-p', expected, '-D', folder)
+                gh('release', 'download', tag, '-p', expected, '-D', folder, '--clobber')
                 if path.stat().st_size != part['bytes'] or digest(path) != part['sha256']:
                     raise RuntimeError('Encrypted checkpoint chunk checksum mismatch')
                 data = path.read_bytes()
