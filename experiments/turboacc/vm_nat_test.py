@@ -71,6 +71,7 @@ def apply():
         print(result.stdout, result.stderr, flush=True)
         error=Path('/tmp/turboacc-last-error')
         if error.exists():print(error.read_text(),flush=True)
+        print('\n'.join(f'{index}: {line}' for index,line in enumerate(run('fw4','print',check=False).stdout.splitlines(),1)),flush=True)
         raise RuntimeError('Actual TurboACC backend apply failed')
     return json.loads(result.stdout)
 

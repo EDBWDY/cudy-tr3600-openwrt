@@ -153,12 +153,28 @@ def wed_mt76_dependency_check():
          'NOSTDINC_FLAGS=' + includes, 'mt76.o', 'mt76-connac-lib.o', 'mt7996/mt7996e.o'], BUILD)
 
 
+def complete_openwrt_patch_stack():
+    from integrate_openwrt import integrate
+    ow = BUILD / ('openwrt-' + LOCK['openwrt_commit'])
+    integrate(ow)
+    tree=BUILD/'complete-target-kernel';tree.mkdir()
+    run(['tar','-xf',BUILD/'linux.tar.xz','-C',tree,'--strip-components=1'],BUILD)
+    for path in ['generic/files','mediatek/files','mediatek/files-6.12']:
+        origin=ow/'target/linux'/path
+        if origin.exists():shutil.copytree(origin,tree,dirs_exist_ok=True,symlinks=True)
+    for path in ['generic/backport-6.12','generic/pending-6.12','generic/hack-6.12','mediatek/patches-6.12']:
+        run(['sh',ow/'scripts/patch-kernel.sh',tree,ow/'target/linux'/path,'*.patch'],BUILD)
+    for name in ['bcm-fullcone-6.12-experimental.patch','mt7987-wed-kernel.patch']:
+        run(['git','apply','--reverse','--check',HERE/name],tree)
+
+
 stage('upstream_turboacc_syntax_only', turboacc_syntax)
 stage('prepare_6_12_94_source', prepare_kernel)
 if RESULT['stages']['prepare_6_12_94_source'] == 'passed':
     stage('experimental_fullcone_and_nat_objects', compile_nat)
     stage('ported_mt7987_wed_objects', compile_wed_baseline)
     stage('ported_mt76_with_matching_backports', wed_mt76_dependency_check)
+    stage('complete_openwrt_kernel_patch_stack_and_package_integration', complete_openwrt_patch_stack)
     from runtime_vm import verify_runtime
     stage('real_openwrt_fw4_fullcone_packet_tests_in_vm', lambda: verify_runtime(BUILD, download, run))
 print(json.dumps(RESULT, indent=2), flush=True)
