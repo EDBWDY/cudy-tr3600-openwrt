@@ -15,7 +15,7 @@ HERE=Path(__file__).resolve().parent
 LOCK=json.loads((HERE/'sources.json').read_text())
 
 
-def integrate(source):
+def integrate(source, replace_patches=False):
     source=Path(source).resolve()
     if not (source/'target/linux/mediatek/dts/mt7987b-cudy-tr3600-v1.dts').is_file():
         raise RuntimeError('TR3600 board source is missing')
@@ -32,7 +32,7 @@ def integrate(source):
     }
     for name,relative in paths.items():
         target=source/relative;target.parent.mkdir(parents=True,exist_ok=True)
-        if target.exists() and target.read_bytes()!=(HERE/name).read_bytes():raise RuntimeError('Refusing to overwrite a different patch: '+relative)
+        if target.exists() and target.read_bytes()!=(HERE/name).read_bytes() and not replace_patches:raise RuntimeError('Refusing to overwrite a different patch: '+relative)
         shutil.copyfile(HERE/name,target)
     prepare(source/'package/custom/luci-app-turboacc-mtk')
     values={

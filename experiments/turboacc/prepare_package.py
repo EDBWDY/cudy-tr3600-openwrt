@@ -102,6 +102,8 @@ def prepare(destination):
     (destination/'Makefile').write_text('''# SPDX-License-Identifier: GPL-3.0-only
 # Frontend: Copyright (C) 2018 Lean; Copyright (C) 2019-2022 ImmortalWrt.org
 include $(TOPDIR)/rules.mk
+PKG_NAME:=luci-app-turboacc-mtk
+LUCI_NAME:=luci-app-turboacc-mtk
 PKG_LICENSE:=GPL-3.0-only
 LUCI_TITLE:=TurboACC for mainline MediaTek PPE and Netfilter
 LUCI_DEPENDS:=+firewall4 +nftables-json +jsonfilter +conntrack +kmod-nft-offload +kmod-nf-conntrack-netlink

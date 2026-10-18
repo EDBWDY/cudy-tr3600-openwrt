@@ -32,6 +32,15 @@ jobs:
           sh -n openwrt/package/custom/luci-app-turboacc-mtk/root/usr/libexec/rpcd/luci.turboacc
           for script in openwrt/package/custom/luci-app-turboacc-mtk/htdocs/luci-static/resources/*.js openwrt/package/custom/luci-app-turboacc-mtk/htdocs/luci-static/resources/view/*.js; do node --check "$script"; done
           msgfmt --check -o /tmp/turboacc.mo openwrt/package/custom/luci-app-turboacc-mtk/po/zh_Hans/turboacc.po
+      - name: Keep bounded package configuration diagnostics
+        if: failure()
+        run: |
+          if test -f openwrt/tmp/.packageinfo; then
+            grep -n -B3 -A28 '^Package: luci-app-turboacc-mtk$' openwrt/tmp/.packageinfo || true
+          fi
+          grep -n -A20 'config PACKAGE_luci-app-turboacc' openwrt/tmp/.config-package.in || true
+          grep -n -E 'turboacc|weechat' openwrt/.config || true
+          cat openwrt/package/custom/luci-app-turboacc-mtk/Makefile || true
       - name: Source regression outcome
         if: steps.tests.outcome != 'success'
         run: exit 1

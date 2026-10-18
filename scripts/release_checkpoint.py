@@ -102,7 +102,7 @@ def save(tag, stage):
     print(f'Complete checkpoint: {tag}; stage_complete={metadata["stage_complete"]}')
 
 
-def restore(tag, next_stage):
+def restore(tag, next_stage, refresh_target=False):
     if (ROOT / 'openwrt').exists():
         raise RuntimeError('Refusing to overwrite an existing compiler tree')
     aes = cipher()
@@ -114,8 +114,13 @@ def restore(tag, next_stage):
             raise RuntimeError('Unknown checkpoint format')
         if metadata['workspace'] != str(ROOT):
             raise RuntimeError('Compiler paths cannot be relocated')
-        if metadata['recipe'] != recipe(ROOT):
-            raise RuntimeError('Compiled source inputs differ; refusing unsafe checkpoint reuse')
+        changed = []
+        current = recipe(ROOT)
+        if metadata['recipe'] != current:
+            if not refresh_target or next_stage == 'verify':
+                raise RuntimeError('Compiled source inputs differ; refusing unsafe checkpoint reuse')
+            from refresh_target import allowed_delta
+            changed = allowed_delta(metadata['recipe'], current)
         order = {'tools': 0, 'rust': 1, 'firmware': 2, 'verify': 3}
         prior, wanted = order[metadata['stage']], order[next_stage]
         if wanted < prior or wanted > prior + 1:
@@ -149,6 +154,9 @@ def restore(tag, next_stage):
             extract.wait()
         if digest(ROOT / 'openwrt/.config') != metadata['config_sha256']:
             raise RuntimeError('Restored configuration does not match saved configuration')
+        if changed:
+            from refresh_target import refresh
+            refresh(ROOT, metadata, changed)
     print('Authenticated compiler tree restored with timestamps and download archives')
 
 
@@ -157,5 +165,11 @@ if __name__ == '__main__':
     parser.add_argument('operation', choices=['save', 'restore'])
     parser.add_argument('tag')
     parser.add_argument('stage', choices=['tools', 'rust', 'firmware', 'verify'])
+    parser.add_argument('--refresh-target', action='store_true', help='Explicitly refresh only reviewed target inputs; preserve compiler')
     args = parser.parse_args()
-    (save if args.operation == 'save' else restore)(args.tag, args.stage)
+    if args.operation == 'save':
+        if args.refresh_target:
+            parser.error('--refresh-target is only valid for restore')
+        save(args.tag, args.stage)
+    else:
+        restore(args.tag, args.stage, args.refresh_target)

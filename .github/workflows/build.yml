@@ -11,6 +11,10 @@ on:
         description: Exact encrypted checkpoint Release tag; empty only for a new tools build
         default: ''
         required: false
+      refresh_target:
+        description: Explicitly refresh reviewed target-only fixes while preserving GCC/Rust
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
@@ -41,7 +45,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CHECKPOINT_KEY: ${{ secrets.TR3600_CHECKPOINT_KEY_V1 }}
           RESUME_TAG: ${{ inputs.resume_release }}
-        run: python3 scripts/release_checkpoint.py restore "$RESUME_TAG" tools
+          REFRESH_TARGET: ${{ inputs.refresh_target }}
+        run: |
+          args=()
+          if test "$REFRESH_TARGET" = true; then args+=(--refresh-target); fi
+          python3 scripts/release_checkpoint.py restore "$RESUME_TAG" tools "${args[@]}"
       - name: Prepare pinned public sources and package configuration
         if: inputs.resume_release == ''
         run: python3 -u scripts/prepare.py
@@ -93,7 +101,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CHECKPOINT_KEY: ${{ secrets.TR3600_CHECKPOINT_KEY_V1 }}
           RESUME_TAG: ${{ needs.tools.outputs.checkpoint || inputs.resume_release }}
-        run: python3 scripts/release_checkpoint.py restore "$RESUME_TAG" rust
+          REFRESH_TARGET: ${{ inputs.refresh_target }}
+        run: |
+          args=()
+          if test "$REFRESH_TARGET" = true; then args+=(--refresh-target); fi
+          python3 scripts/release_checkpoint.py restore "$RESUME_TAG" rust "${args[@]}"
       - name: Ensure the pinned host Rust archive exists
         run: python3 scripts/ensure-rust-source.py
       - name: Compile rust; preserve a nonzero or timed-out stage for same-stage continuation
@@ -142,7 +154,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CHECKPOINT_KEY: ${{ secrets.TR3600_CHECKPOINT_KEY_V1 }}
           RESUME_TAG: ${{ needs.rust.outputs.checkpoint || inputs.resume_release }}
-        run: python3 scripts/release_checkpoint.py restore "$RESUME_TAG" firmware
+          REFRESH_TARGET: ${{ inputs.refresh_target }}
+        run: |
+          args=()
+          if test "$REFRESH_TARGET" = true; then args+=(--refresh-target); fi
+          python3 scripts/release_checkpoint.py restore "$RESUME_TAG" firmware "${args[@]}"
       - name: Compile firmware; preserve a nonzero or timed-out stage for same-stage continuation
         run: bash scripts/compile-stage.sh firmware
       - name: Collect images and matching packages BEFORE independent tests

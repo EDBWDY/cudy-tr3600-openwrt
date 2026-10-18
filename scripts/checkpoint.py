@@ -32,7 +32,7 @@ def recipe(root):
                        'kernel_audit.py', 'feature_requirements.py', 'privacy_audit.py',
                        'checkpoint.py', 'release_checkpoint.py', 'release_outputs.py',
                        'collect-unverified.py', 'check-toolchain-reuse.py',
-                       'refresh_customizations.py', 'public_source_audit.py'}
+                       'refresh_customizations.py', 'refresh_target.py', 'public_source_audit.py'}
     experiment_build = {'sources.json', 'prepare_package.py', 'integrate_openwrt.py',
                         'turboacc-control', 'turboacc.rpc', 'turboacc.init',
                         'turboacc_safety.js', 'turboacc_wed.js', 'turboacc-wed'}

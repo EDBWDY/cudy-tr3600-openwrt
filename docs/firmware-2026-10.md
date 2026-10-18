@@ -40,6 +40,8 @@
 
 用 `build.yml` 的 `start_stage` 和 `resume_release` 从检查点继续。只重新验证时运行 `verify-candidate.yml`，提供 firmware 检查点标签、已有候选 Release 标签和公开的验证源码 ref。工具链和产物不占用 Actions artifact/cache 配额。
 
+修复目标驱动补丁或自定义软件包后，可显式选择 `refresh_target` 继续。它只允许审查过的目标源码变化，固定源码版本、主机编译设置和目标架构必须保持一致；重新准备配对补丁，清理受影响的目标构建目录，保留交叉编译器与 Rust。涉及内核补丁时清理内核及其外部模块目录，避免混入旧 ABI 模块；还会删除旧镜像，防止新编译失败后误上传旧文件。完整 Rust 检查点需通过有时限的真实 GCC/Rust 依赖复用检查。独立验证不能使用此选项偷偷修改已有固件。
+
 ## 上游
 
 - [OpenWrt](https://github.com/openwrt/openwrt) 与 [mt76](https://github.com/openwrt/mt76)

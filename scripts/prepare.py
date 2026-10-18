@@ -35,6 +35,12 @@ feeds = [f"src-git {name} {spec['url']}^{spec['commit']}" for name, spec in LOCK
 (SRC / 'feeds.conf').write_text('\n'.join(feeds) + '\n')
 run('./scripts/feeds', 'update', '-a', cwd=SRC)
 run('./scripts/feeds', 'install', '-a', cwd=SRC)
+# This pinned LuCI app selects weechat-minimal while depending on weechat-full,
+# which creates a Kconfig cycle with the pinned packages feed. It is not part of
+# this firmware. Exclude its feed link, without changing either pinned source.
+weechat = SRC / 'package/feeds/luci/luci-app-weechat'
+if weechat.is_symlink():
+    weechat.unlink()
 
 from samba_labels import customize_package
 customize_package(SRC / 'feeds/luci/applications/luci-app-samba4')
