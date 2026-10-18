@@ -13,6 +13,9 @@ def verify_links(build, lock, run):
     run(['make',*flags,'mrproper'],kernel)
     run(['make',*flags,'tinyconfig'],kernel)
     features='MODULES MODULE_UNLOAD MODVERSIONS ARCH_MEDIATEK PCI OF NET INET IPV6 NETDEVICES ETHERNET NET_VENDOR_MEDIATEK NETFILTER NETFILTER_ADVANCED NETFILTER_INGRESS NF_NAT_MASQUERADE PROC_FS SYSCTL SYSFS DEBUG_FS WIRELESS WLAN RFKILL FW_LOADER AVERAGE RELAY BPF CRYPTO CRYPTO_AEAD CRYPTO_AES CRYPTO_CCM CRYPTO_GCM CRYPTO_CMAC CRYPTO_HMAC CRYPTO_SHA256 CRYPTO_SHA512 CRYPTO_MICHAEL_MIC CRYPTO_ECB CRYPTO_CBC CRYPTO_LIB_ARC4 CRYPTO_LIB_SHA1 CRYPTO_LIB_SHA256 CRC_CCITT CRC32 LIBCRC32C'.split()
+    # OpenWrt pending patch 731 introduces this separate header/struct switch
+    # so backports can be built without the in-tree cfg80211 module.
+    features += ['CFG80211_HEADERS']
     config=['scripts/config']
     for feature in features:config+=['--enable',feature]
     for feature in ['NET_MEDIATEK_SOC','NF_CONNTRACK','NF_NAT','NF_CT_NETLINK','NF_TABLES','NFT_MASQ','NF_FLOW_TABLE','NFT_FLOW_OFFLOAD']:
@@ -20,7 +23,7 @@ def verify_links(build, lock, run):
     run(config,kernel)
     run(['make',*flags,'olddefconfig'],kernel)
     text=(kernel/'.config').read_text().splitlines()
-    for required in ['CONFIG_NET_MEDIATEK_SOC=m','CONFIG_NET_MEDIATEK_SOC_WED=y','CONFIG_MODULES=y','CONFIG_NF_NAT=m']:
+    for required in ['CONFIG_NET_MEDIATEK_SOC=m','CONFIG_NET_MEDIATEK_SOC_WED=y','CONFIG_MODULES=y','CONFIG_NF_NAT=m','CONFIG_CFG80211_HEADERS=y']:
         if required not in text:raise RuntimeError('ARM64 link fixture dropped '+required)
     run(['make','-j4',*flags,'Image','modules'],kernel)
     bp=build/('backports-'+lock['backports']['version'])
