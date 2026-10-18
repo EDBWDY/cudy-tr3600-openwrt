@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import urllib.request
+import shutil
 
 HERE = Path(__file__).resolve().parent
 LOCK = json.loads((HERE / 'sources.json').read_text())
@@ -71,6 +72,7 @@ def prepare_kernel():
     # vendor patches. This avoids testing against an unrelated vanilla core.
     patches = [
         'generic/backport-6.12/731-v6.18-net-mediatek-wed-Introduce-MT7992-WED-support-to-MT7.patch',
+        'generic/backport-6.12/732-v6.18-wifi-mt76-wed-use-proper-wed-reference-in-mt76-wed-d.patch',
         'generic/backport-6.12/733-v6.18-net-mtk-wed-add-dma-mask-limitation-and-GFP_DMA32-fo.patch',
         'mediatek/patches-6.12/940-net-ethernet-mtk_wed-rename-mtk_wed_get_memory_regio.patch',
         'mediatek/patches-6.12/942-net-ethernet-mtk_wed-move-cpuboot-in-a-dedicated-dts.patch',
@@ -81,6 +83,8 @@ def prepare_kernel():
         patch = raw('openwrt/openwrt', LOCK['openwrt_commit'], 'target/linux/' + path, BUILD / f'wed-base-{index}.patch')
         run(['git', 'apply', '--check', patch], kernel)
         run(['git', 'apply', patch], kernel)
+    run(['git', 'apply', '--check', HERE / 'mt7987-wed-kernel.patch'], kernel)
+    run(['git', 'apply', HERE / 'mt7987-wed-kernel.patch'], kernel)
     run(['make', 'ARCH=arm64', 'CROSS_COMPILE=aarch64-linux-gnu-', 'defconfig'], kernel)
     run(['scripts/config', '--module', 'NF_CONNTRACK', '--module', 'NF_NAT',
          '--enable', 'NF_NAT_MASQUERADE', '--enable', 'NF_CONNTRACK_EVENTS',
@@ -88,7 +92,8 @@ def prepare_kernel():
          '--module', 'NETFILTER_XT_TARGET_MASQUERADE', '--module', 'NF_TABLES',
          '--module', 'NFT_MASQ', '--module', 'NFT_FLOW_OFFLOAD',
          '--module', 'NF_FLOW_TABLE', '--enable', 'ARCH_MEDIATEK',
-         '--enable', 'NET_VENDOR_MEDIATEK', '--module', 'NET_MEDIATEK_SOC'], kernel)
+         '--enable', 'NET_VENDOR_MEDIATEK', '--module', 'NET_MEDIATEK_SOC',
+         '--module', 'MT7996E', '--enable', 'AVERAGE'], kernel)
     run(['make', 'ARCH=arm64', 'CROSS_COMPILE=aarch64-linux-gnu-', 'olddefconfig'], kernel)
     config = (kernel / '.config').read_text().splitlines()
     for required in ['CONFIG_NET_MEDIATEK_SOC=m', 'CONFIG_NET_MEDIATEK_SOC_WED=y',
@@ -108,7 +113,9 @@ def compile_nat():
 def compile_wed_baseline():
     run(['make', '-j4', 'ARCH=arm64', 'CROSS_COMPILE=aarch64-linux-gnu-',
          'drivers/net/ethernet/mediatek/mtk_wed.o',
-         'drivers/net/ethernet/mediatek/mtk_wed_wo.o'], kernel)
+         'drivers/net/ethernet/mediatek/mtk_wed_wo.o',
+         'drivers/net/ethernet/mediatek/mtk_wed_mcu.o',
+         'drivers/net/ethernet/mediatek/mtk_wed_debugfs.o'], kernel)
 
 
 def wed_kernel_dependency_check():
@@ -120,17 +127,32 @@ def wed_kernel_dependency_check():
 def wed_mt76_dependency_check():
     archive = download('https://codeload.github.com/openwrt/mt76/tar.gz/' + LOCK['mt76_commit'], BUILD / 'mt76.tar.gz')
     run(['tar', '-xf', archive], BUILD)
-    path = 'autobuild/unified/filogic/mac80211/25.12/files/package/kernel/mt76/patches/0049-mtk-mt76-mt7990-add-mt7987-wed-hw-path-support.patch'
-    patch = raw('mediatek/mtk-openwrt-feeds', LOCK['mediatek_commit'], path, BUILD / 'mt76-wed-mt7987.patch')
-    run(['git', 'apply', '--check', patch], BUILD / ('mt76-' + LOCK['mt76_commit']))
+    mt76 = BUILD / ('mt76-' + LOCK['mt76_commit'])
+    run(['git', 'apply', '--check', HERE / 'mt7987-wed-mt76.patch'], mt76)
+    run(['git', 'apply', HERE / 'mt7987-wed-mt76.patch'], mt76)
+    bp_archive = download(LOCK['backports']['url'], BUILD / 'backports.tar.zst')
+    if hashlib.file_digest(bp_archive.open('rb'), 'sha256').hexdigest() != LOCK['backports']['sha256']:
+        raise RuntimeError('Backports checksum mismatch')
+    run(['tar', '-xf', bp_archive], BUILD)
+    bp = BUILD / ('backports-' + LOCK['backports']['version'])
+    (bp / 'defconfig').write_text('CPTCFG_CFG80211=m\nCPTCFG_MAC80211=m\nCPTCFG_WLAN=y\n')
+    flags = ['ARCH=arm64', 'CROSS_COMPILE=aarch64-linux-gnu-', 'KLIB_BUILD=' + str(kernel), 'KLIB=' + str(BUILD / 'unused-modules')]
+    run(['make', *flags, 'usedefconfig'], bp)
+    run(['make', *flags, 'backport-include/backport/autoconf.h'], bp)
+    staged = BUILD / 'backport-headers'
+    shutil.copytree(bp / 'backport-include', staged)
+    (staged / 'linux/module.h').unlink(missing_ok=True)
+    includes = f'-I{mt76} -I{staged}/uapi -I{staged} -I{bp}/include/uapi -I{bp}/include -include backport/autoconf.h -include backport/backport.h'
+    run(['make', '-j4', '-C', kernel, 'ARCH=arm64', 'CROSS_COMPILE=aarch64-linux-gnu-',
+         'M=' + str(mt76), 'CONFIG_MT76_CORE=m', 'CONFIG_MT76_CONNAC_LIB=m', 'CONFIG_MT7996E=m',
+         'NOSTDINC_FLAGS=' + includes, 'mt76.o', 'mt76-connac-lib.o', 'mt7996/mt7996e.o'], BUILD)
 
 
 stage('upstream_turboacc_syntax_only', turboacc_syntax)
 stage('prepare_6_12_94_source', prepare_kernel)
 if RESULT['stages']['prepare_6_12_94_source'] == 'passed':
     stage('experimental_fullcone_and_nat_objects', compile_nat)
-    stage('current_wed_baseline_objects', compile_wed_baseline)
-    stage('vendor_wed_kernel_patch_dependencies', wed_kernel_dependency_check)
-stage('vendor_mt76_patch_dependencies', wed_mt76_dependency_check)
+    stage('ported_mt7987_wed_objects', compile_wed_baseline)
+    stage('ported_mt76_with_matching_backports', wed_mt76_dependency_check)
 print(json.dumps(RESULT, indent=2), flush=True)
 raise SystemExit(1 if any(value != 'passed' for value in RESULT['stages'].values()) else 0)

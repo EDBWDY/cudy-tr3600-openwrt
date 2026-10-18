@@ -1,0 +1,28 @@
+{
+  "kernel_files": [
+    "drivers/net/ethernet/mediatek/mtk_wed.c",
+    "drivers/net/ethernet/mediatek/mtk_wed.h",
+    "drivers/net/ethernet/mediatek/mtk_wed_debugfs.c",
+    "drivers/net/ethernet/mediatek/mtk_wed_mcu.c",
+    "drivers/net/ethernet/mediatek/mtk_wed_regs.h",
+    "drivers/net/ethernet/mediatek/mtk_wed_wo.c",
+    "include/linux/soc/mediatek/mtk_wed.h"
+  ],
+  "mt76_files": [
+    "dma.c",
+    "mt76.h",
+    "mt7996/dma.c",
+    "mt7996/mac.c",
+    "mt7996/mmio.c",
+    "mt7996/mt7996.h",
+    "mt7996/pci.c",
+    "mt7996/regs.h",
+    "wed.c"
+  ],
+  "omitted_vendor_features": [
+    "07 WMM / TID path: depends on vendor PPE/netdevice API",
+    "11 PPE drop extension: optional vendor feature",
+    "13 PSE WDMA link-down recovery: depends on vendor Ethernet API"
+  ],
+  "hardware_runtime_verified": false
+}

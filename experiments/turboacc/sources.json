@@ -6,6 +6,11 @@
   },
   "openwrt_commit": "046aec0dccd90f5a156cb8e9725c121c81955dd3",
   "mt76_commit": "39c960c3ada558b4c2e7915772483d3731573d09",
+  "backports": {
+    "version": "6.18.39",
+    "url": "https://github.com/openwrt/backports/releases/download/backports-v6.18.39/backports-6.18.39.tar.zst",
+    "sha256": "8951c1e270d7c311432377bd50951cd1d5dee2b5fedf33d30db41aa8e428aeb0"
+  },
   "mediatek_commit": "c24f2ab0213a1356a4c9d6aade0142c32e44f1e1",
   "turboacc_repository": "padavanonly/immortalwrt-mt798x-6.6",
   "turboacc_commit": "ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8",
