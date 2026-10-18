@@ -31,8 +31,19 @@ def verify_runtime(build, download, run):
     run(['sudo','tar','-xzf',archive,'-C',root],vm)
     run(['sudo','chown','-R',f'{os.getuid()}:{os.getgid()}',root],vm)
     (root/'tmp').mkdir(exist_ok=True)
+    # Minimal rootfs archives contain an empty /dev. TLS needs its entropy
+    # devices even when package installation is performed in a chroot.
+    for name,major,minor in [('null',1,3),('zero',1,5),('random',1,8),('urandom',1,9),('console',5,1)]:
+        if not (root/'dev'/name).exists():run(['sudo','mknod','-m','666',root/'dev'/name,'c',str(major),str(minor)],vm)
     resolver=root/'etc/resolv.conf';resolver.unlink(missing_ok=True);shutil.copyfile('/etc/resolv.conf',resolver)
     run(['sudo','chroot',root,'/usr/bin/apk','add','--no-cache','--no-scripts','python3','ip-full','firewall4','nftables-json','uci','ubus','netifd','jsonfilter'],vm)
+    # Package scripts are deliberately not executed in the host's network
+    # namespace. Resolve only the executable alternatives inside this rootfs.
+    if not (root/'usr/libexec/ip-full').is_file():raise RuntimeError('ip-full payload is missing')
+    ip=root/'sbin/ip';ip.unlink(missing_ok=True);ip.symlink_to('/usr/libexec/ip-full')
+    python_versions=sorted(path for path in (root/'usr/bin').glob('python3.*') if path.name.split('.')[-1].isdigit())
+    if python_versions:
+        python=root/'usr/bin/python3';python.unlink(missing_ok=True);python.symlink_to(python_versions[-1].name)
     resolver.write_text('nameserver 192.0.2.1\n')
     from prepare_package import prepare
     package=prepare(vm/'turboacc-package')

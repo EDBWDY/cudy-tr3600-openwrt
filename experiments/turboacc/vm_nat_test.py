@@ -144,8 +144,28 @@ def main():
     assert run('/usr/libexec/turboacc-control','apply',check=False).returncode!=0
     assert Path('/etc/config/firewall').read_bytes()==original
     results['invalid_mode_and_unavailable_ppe_rejected_without_firewall_changes']=True
+    # Exercise the actual fw4 validation failure path, rather than a mock.
+    configuration(0,0,'reno')
+    config=Path('/etc/config/turboacc')
+    config.write_text(config.read_text().replace("'flow_offloading'","'disabled'"))
+    bad_include=Path('/etc/nftables.d/99-invalid-turboacc-test.nft')
+    bad_include.write_text('deliberately_invalid_nft_statement\n')
+    rejected=run('/usr/libexec/turboacc-control','apply',check=False)
+    bad_include.unlink()
+    assert rejected.returncode!=0
+    assert Path('/etc/config/firewall').read_bytes()==original
+    restored=json.loads(run('/usr/libexec/turboacc-control','status').stdout)
+    assert restored['software_rules_active'] and restored['fullcone_mode']==2 and restored['tcp_congestion_control']=='cubic'
+    results['real_fw4_failure_restores_firewall_and_keeps_previous_runtime']=True
+    run('uci','set','firewall.@defaults[0].input=DROP')
+    assert run('/usr/libexec/turboacc-control','apply',check=False).returncode!=0
+    assert 'input=' in run('uci','changes','firewall').stdout
+    assert Path('/etc/config/firewall').read_bytes()==original
+    run('uci','revert','firewall')
+    results['unrelated_pending_firewall_changes_preserved']=True
     configuration(0,0);apply();off_again=udp_probe(41004)
     assert not off_again['third_peer_reached'],off_again
+    assert json.loads(run(rpc,'call','getFullConeStat').stdout)=={}
     results['disable_fullcone_restores_restricted_inbound_udp']=True
     assert hashlib.sha256(Path('/etc/config/network').read_bytes()).hexdigest()==network_hash
     results['network_and_interface_configuration_unchanged']=True
