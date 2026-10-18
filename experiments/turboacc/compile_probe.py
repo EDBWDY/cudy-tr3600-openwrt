@@ -1,4 +1,4 @@
-"""Compile-only acceleration experiment. Never install the output on a router.
+"""Compile and isolated-VM acceleration experiment. No router deployment.
 
 Uses only pinned public sources. Object compilation checks C APIs, not the
 running OpenWrt ABI, packet forwarding, NAT behaviour, or WED operation.
@@ -15,7 +15,8 @@ import shutil
 HERE = Path(__file__).resolve().parent
 LOCK = json.loads((HERE / 'sources.json').read_text())
 BUILD = Path(tempfile.mkdtemp(prefix='tr3600-acceleration-', dir=os.environ.get('RUNNER_TEMP')))
-RESULT = {'scope': LOCK['scope'], 'stages': {}, 'deployable': False}
+RESULT = {'scope': LOCK['scope'], 'stages': {}, 'deployable': False,
+          'physical_wed_runtime_verified': False, 'live_router_changes': False}
 
 
 def download(url, path):
@@ -166,6 +167,20 @@ def complete_openwrt_patch_stack():
         run(['sh',ow/'scripts/patch-kernel.sh',tree,ow/'target/linux'/path,'*.patch'],BUILD)
     for name in ['bcm-fullcone-6.12-experimental.patch','mt7987-wed-kernel.patch']:
         run(['git','apply','--reverse','--check',HERE/name],tree)
+    shutil.copyfile(kernel/'.config',tree/'.config')
+    flags=['ARCH=arm64','CROSS_COMPILE=aarch64-linux-gnu-']
+    run(['make',*flags,'olddefconfig'],tree)
+    run(['make','-j4',*flags,'prepare'],tree)
+    run(['make','-j4',*flags,
+         'drivers/net/ethernet/mediatek/mtk_eth_soc.o',
+         'drivers/net/ethernet/mediatek/mtk_eth_path.o',
+         'drivers/net/ethernet/mediatek/mtk_ppe.o',
+         'drivers/net/ethernet/mediatek/mtk_ppe_offload.o',
+         'drivers/net/ethernet/mediatek/mtk_wed.o',
+         'drivers/net/ethernet/mediatek/mtk_wed_wo.o',
+         'drivers/net/ethernet/mediatek/mtk_wed_mcu.o',
+         'drivers/net/ethernet/mediatek/mtk_wed_debugfs.o',
+         'net/netfilter/nf_conntrack.o','net/netfilter/nf_nat.o'],tree)
 
 
 stage('upstream_turboacc_syntax_only', turboacc_syntax)

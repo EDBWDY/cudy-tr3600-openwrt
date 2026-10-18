@@ -28,7 +28,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu build-essential flex bison libelf-dev libssl-dev bc lua5.1 zstd cpio qemu-system-x86
-      - name: Compile real Netfilter code and check WED patch dependencies
+      - name: Compile paired WED sources and run actual OpenWrt packet tests
         run: python3 -u experiments/turboacc/compile_probe.py
       - name: Record bounded result in job summary
         if: always()

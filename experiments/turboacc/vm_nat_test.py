@@ -89,7 +89,11 @@ def udp_probe(port):
 
 
 def main():
-    results={}
+    class Results(dict):
+        def __setitem__(self,name,value):
+            super().__setitem__(name,value)
+            print('TURBOACC_VM_CHECK='+name+': '+str(value),flush=True)
+    results=Results()
     for name in ['client','external']:run('ip','netns','add',name)
     for root,peer,namespace in [('lan0','client0','client'),('wan0','external0','external')]:
         run('ip','link','add',root,'type','veth','peer','name',peer)
@@ -106,6 +110,11 @@ def main():
     subprocess.Popen(['/sbin/ubusd']);time.sleep(0.3)
     subprocess.Popen(['/sbin/netifd']);time.sleep(2)
     print(run('ubus','call','network.interface','dump').stdout,flush=True)
+    initial_firewall=run('fw4','start',check=False)
+    if initial_firewall.returncode:
+        print(initial_firewall.stdout,initial_firewall.stderr,flush=True)
+        print(run('fw4','print',check=False).stdout,flush=True)
+        raise RuntimeError('The actual OpenWrt baseline firewall could not start')
     server_process=subprocess.Popen(['ip','netns','exec','external',sys.executable,__file__,'server'])
     time.sleep(0.5)
     network_hash=hashlib.sha256(Path('/etc/config/network').read_bytes()).hexdigest()

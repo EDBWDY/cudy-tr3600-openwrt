@@ -15,5 +15,5 @@
   "turboacc_repository": "padavanonly/immortalwrt-mt798x-6.6",
   "turboacc_commit": "ec9ef10efc65da1e6d1de4e2c043c0e13d08eed8",
   "fullcone_origin": "target/linux/generic/pending-6.6/682-add-bcm-fullconenat-support.patch",
-  "scope": "Experimental C/API compilation and patch dependency checks only; no firmware deployment or runtime success claim."
+  "scope": "Experimental ARM64 compilation, complete OpenWrt patch integration and isolated VM packet tests; no physical WED runtime claim or router deployment."
 }
