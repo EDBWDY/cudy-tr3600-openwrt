@@ -10,6 +10,7 @@
   ],
   "mt76_files": [
     "dma.c",
+    "mac80211.c",
     "mt76.h",
     "mt7996/dma.c",
     "mt7996/mac.c",
@@ -24,5 +25,11 @@
     "11 PPE drop extension: optional vendor feature",
     "13 PSE WDMA link-down recovery: depends on vendor Ethernet API"
   ],
-  "hardware_runtime_verified": false
+  "hardware_runtime_verified": false,
+  "additional_paired_vendor_fixes": [
+    "0020 WED-off RX cleanup",
+    "0040 attach failure disables secondary WED, with explicit error log",
+    "0047 RRO 3.0 indicator queue",
+    "0090 flow-control and page-ring fields paired with WED kernel patch 18"
+  ]
 }

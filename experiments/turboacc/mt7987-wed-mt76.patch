@@ -11,6 +11,39 @@ diff --git a/dma.c b/dma.c
  			*drop |= !!(buf1 & MT_DMA_CTL_WO_DROP);
  	} else {
  		dma_sync_single_for_cpu(dev->dma_dev, e->dma_addr[0],
+@@ -887,8 +888,7 @@
+ 		    mt76_queue_is_wed_rro(q))
+ 			continue;
+ 
+-		if (!mt76_queue_is_wed_rro_rxdmad_c(q) &&
+-		    !mt76_queue_is_wed_rro_ind(q))
++		if (!mt76_queue_is_wed_rro(q))
+ 			mt76_put_page_pool_buf(buf, false);
+ 	} while (1);
+ 
+diff --git a/mac80211.c b/mac80211.c
+--- a/mac80211.c
++++ b/mac80211.c
+@@ -886,6 +886,7 @@
+ 	struct sk_buff *skb = phy->rx_amsdu[q].head;
+ 	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
+ 	struct mt76_dev *dev = phy->dev;
++	struct mt76_queue *rxq = &dev->q_rx[q];
+ 
+ 	phy->rx_amsdu[q].head = NULL;
+ 	phy->rx_amsdu[q].tail = NULL;
+@@ -914,6 +915,11 @@
+ 			return;
+ 		}
+ 	}
++
++	/* for RRO 3.0, RX data should be put to the indicator queue */
++	if (mt76_queue_is_wed_rro_data(rxq) && dev->hwrro_mode == MT76_HWRRO_V3)
++		q = MT_RXQ_RRO_IND;
++
+ 	__skb_queue_tail(&dev->rx_skb[q], skb);
+ }
+ 
 diff --git a/mt76.h b/mt76.h
 --- a/mt76.h
 +++ b/mt76.h
@@ -188,7 +221,7 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
  	struct pci_dev *pci_dev = pdev_ptr;
  	u32 hif1_ofs;
 +	u16 tx_token_size, rx_token_size;
-+	int wed_hw_ver;
++	int wed_hw_ver, ret;
  
  	if (!wed_enable)
  		return 0;
@@ -262,12 +295,14 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
 -		wed->wlan.wpdma_rx[0] = wed->wlan.phy_base + hif1_ofs +
 -					MT_RXQ_RING_BASE(MT7996_RXQ_BAND2) +
 -					MT7996_RXQ_BAND2 * MT_RING_SIZE;
+-
+-		wed->wlan.id = MT7996_DEVICE_ID_2;
 +		if (wed_hw_ver == MTK_WED_HW_V3)
 +			wed->wlan.wpdma_rx[0] = wed->wlan.phy_base + hif1_ofs +
 +						MT_RXQ_RING_BASE(MT7996_RXQ_BAND2) +
 +						MT7996_RXQ_BAND2 * MT_RING_SIZE;
- 
- 		wed->wlan.id = MT7996_DEVICE_ID_2;
++
++		wed->wlan.fc_disable = true;
  		wed->wlan.tx_tbit[0] = ffs(MT_INT_TX_DONE_BAND2) - 1;
  	} else {
 -		wed->wlan.hw_rro = mt7996_has_hwrro(dev);
@@ -337,7 +372,7 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
  		wed->wlan.rro_rx_tbit[0] = ffs(MT_INT_RX_DONE_RRO_BAND0) - 1;
  		if (is_mt7996(&dev->mt76)) {
  			wed->wlan.rx_tbit[1] = ffs(MT_INT_RX_DONE_BAND2) - 1;
-@@ -564,9 +617,13 @@
+@@ -564,9 +617,15 @@
  			wed->wlan.rro_rx_tbit[1] = ffs(MT_INT_RX_DONE_RRO_BAND1) - 1;
  		}
  
@@ -348,13 +383,15 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
 +			wed->wlan.rx_pg_tbit[0] = ffs(MT_INT_RX_DONE_MSDU_PG_BAND0) - 1;
 +			wed->wlan.rx_pg_tbit[1] = ffs(MT_INT_RX_DONE_MSDU_PG_BAND1) - 1;
 +			wed->wlan.rx_pg_tbit[2] = ffs(MT_INT_RX_DONE_MSDU_PG_BAND2) - 1;
++			wed->wlan.pg_ring_num = is_mt7996(&dev->mt76) ? 3 : 1;
 +		} else {
 +			wed->wlan.rro_3_1_rx_tbit = ffs(MT_INT_RX_DONE_RRO_RXDMAD_C) - 1;
++			wed->wlan.pg_ring_num = 0;
 +		}
  
  		wed->wlan.tx_tbit[0] = ffs(MT_INT_TX_DONE_BAND0) - 1;
  		wed->wlan.tx_tbit[1] = ffs(MT_INT_TX_DONE_BAND1) - 1;
-@@ -582,18 +639,26 @@
+@@ -582,18 +641,26 @@
  							 MT7996_RXQ_MCU_WA_MAIN * MT_RING_SIZE;
  				wed->wlan.txfree_tbit = ffs(MT_INT_RX_DONE_WA_MAIN) - 1;
  			}
@@ -364,13 +401,13 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
  			wed->wlan.wpdma_txfree = wed->wlan.phy_base + MT_RXQ_RING_BASE(0) +
  						  MT7996_RXQ_MCU_WA_MAIN * MT_RING_SIZE;
 +			if (dev->hif2)
-+				wed->wlan.id = MT7992_DEVICE_ID;
++				wed->wlan.fc_disable = true;
 +		} else {
 +			wed->wlan.txfree_tbit = ffs(MT_INT_RX_TXFREE_BAND0_MT7990) - 1;
 +			wed->wlan.wpdma_txfree = wed->wlan.phy_base + MT_RXQ_RING_BASE(0) +
 +						 MT7990_RXQ_TXFREE0 * MT_RING_SIZE;
 +			if (dev->hif2)
-+				wed->wlan.id = MT7990_DEVICE_ID;
++				wed->wlan.fc_disable = true;
  		}
 -		dev->mt76.rx_token_size = MT7996_TOKEN_SIZE + wed->wlan.rx_npkt;
 +		dev->mt76.rx_token_size = tx_token_size + rx_token_size;
@@ -383,6 +420,19 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
 +	wed->wlan.nbuf = tx_token_size;
  	wed->wlan.token_start = MT7996_TOKEN_SIZE - wed->wlan.nbuf;
  	wed->wlan.hif2 = hif2;
+ 
+@@ -610,8 +677,11 @@
+ 		wed->wlan.reset_complete = mt76_wed_reset_complete;
+ 	}
+ 
+-	if (mtk_wed_device_attach(wed)) {
++	ret = mtk_wed_device_attach(wed);
++	if (ret) {
+ 		dev->mt76.hwrro_mode = MT76_HWRRO_OFF;
++		wed_enable = false;
++		dev_warn(dev->mt76.dev, "WED attach failed (%d); using the software path\n", ret);
+ 		return 0;
+ 	}
  
 diff --git a/mt7996/mt7996.h b/mt7996/mt7996.h
 --- a/mt7996/mt7996.h
