@@ -17,13 +17,13 @@ def verify_runtime(build, download, run):
     run(['git','apply',HERE/'bcm-fullcone-6.12-experimental.patch'],kernel)
     run(['make','ARCH=x86_64','tinyconfig'],kernel)
     features='64BIT X86_64 BLK_DEV_INITRD RD_GZIP BINFMT_ELF BINFMT_SCRIPT PRINTK TTY SERIAL_8250 SERIAL_8250_CONSOLE UNIX98_PTYS SYSCTL PROC_FS PROC_SYSCTL SYSFS TMPFS SHMEM DEVTMPFS NET NET_NS NAMESPACES UTS_NS PID_NS IPC_NS USER_NS NETDEVICES NET_CORE VETH INET IPV6 IP_ADVANCED_ROUTER IP_MULTIPLE_TABLES PACKET UNIX NETFILTER NETFILTER_ADVANCED NF_CONNTRACK NF_CONNTRACK_PROCFS NF_CONNTRACK_EVENTS NF_NAT NF_NAT_MASQUERADE NF_DEFRAG_IPV4 NF_DEFRAG_IPV6 NF_TABLES NF_TABLES_INET NFT_CT NFT_LOG NFT_LIMIT NFT_REJECT NFT_REJECT_INET NF_REJECT_IPV4 NF_REJECT_IPV6 NFT_MASQ NFT_CHAIN_NAT NFT_FIB NFT_FIB_INET NFT_FIB_IPV4 NFT_FIB_IPV6 NFT_FLOW_OFFLOAD NF_FLOW_TABLE NF_FLOW_TABLE_INET TCP_CONG_CUBIC CHECKPOINT_RESTORE EPOLL SIGNALFD TIMERFD EVENTFD POSIX_TIMERS FUTEX FILE_LOCKING MULTIUSER INOTIFY_USER SYSVIPC'.split()
-    features += ['NFT_NAT', 'NFT_REDIR', 'NFT_REJECT_IPV4', 'NFT_REJECT_IPV6', 'NFT_RT', 'DEBUG_FS']
+    features += ['NFT_NAT', 'NFT_REDIR', 'NFT_REJECT_IPV4', 'NFT_REJECT_IPV6', 'NFT_RT', 'DEBUG_FS', 'NF_CT_NETLINK']
     args=['scripts/config']
     for feature in features:args+=['--enable',feature]
     run(args,kernel)
     run(['make','ARCH=x86_64','olddefconfig'],kernel)
     config=(kernel/'.config').read_text()
-    for feature in ['64BIT','NET_NS','VETH','NF_NAT','NFT_MASQ','NF_FLOW_TABLE','PROC_FS']:
+    for feature in ['64BIT','NET_NS','VETH','NF_NAT','NFT_MASQ','NF_FLOW_TABLE','NF_CT_NETLINK','PROC_FS']:
         if 'CONFIG_'+feature+'=y' not in config:raise RuntimeError('VM configuration missing '+feature)
     run(['make','-j4','ARCH=x86_64','bzImage'],kernel)
     archive=download(ROOTFS_URL,vm/'rootfs.tar.gz')
@@ -37,7 +37,7 @@ def verify_runtime(build, download, run):
     for name,major,minor in [('null',1,3),('zero',1,5),('random',1,8),('urandom',1,9),('console',5,1)]:
         if not (root/'dev'/name).exists():run(['sudo','mknod','-m','666',root/'dev'/name,'c',str(major),str(minor)],vm)
     resolver=root/'etc/resolv.conf';resolver.unlink(missing_ok=True);shutil.copyfile('/etc/resolv.conf',resolver)
-    run(['sudo','chroot',root,'/usr/bin/apk','add','--no-cache','--no-scripts','python3','ip-full','firewall4','nftables-json','uci','ubus','netifd','jsonfilter'],vm)
+    run(['sudo','chroot',root,'/usr/bin/apk','add','--no-cache','--no-scripts','python3','ip-full','firewall4','nftables-json','uci','ubus','netifd','jsonfilter','conntrack'],vm)
     # Package scripts are deliberately not executed in the host's network
     # namespace. Resolve only the executable alternatives inside this rootfs.
     if not (root/'usr/libexec/ip-full').is_file():raise RuntimeError('ip-full payload is missing')
@@ -51,7 +51,6 @@ def verify_runtime(build, download, run):
     for path in [package/'root/etc/init.d/turboacc',package/'root/usr/libexec/rpcd/luci.turboacc',package/'root/usr/libexec/turboacc-control']:
         run(['sh','-n',path],vm)
     run(['node','--check',package/'htdocs/luci-static/resources/view/turboacc.js'],vm)
-    run(['node',HERE/'test_fullcone_safety.cjs'],vm)
     shutil.copytree(package/'root',root,dirs_exist_ok=True)
     tests=root/'root/acceleration';tests.mkdir(parents=True,exist_ok=True)
     shutil.copyfile(HERE/'vm_nat_test.py',tests/'vm_nat_test.py')

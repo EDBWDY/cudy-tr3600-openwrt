@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import socket
+import signal
 import subprocess
 import sys
 import threading
@@ -42,20 +43,31 @@ def server():
     tcp()
 
 
-def udp_client(port):
+def udp_client(port, source):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); sock.settimeout(2)
-    sock.bind(('192.0.2.2', port)); mappings=[]
-    for address in ['198.51.100.2', '198.51.100.3']:
-        sock.sendto(b'probe', (address, 3478)); mappings.append(json.loads(sock.recv(1024)))
-    print(json.dumps({'mappings': mappings}), flush=True)
-    try: reached = sock.recv(1024) == b'unsolicited-third-peer'
-    except socket.timeout: reached=False
-    print(json.dumps({'third_peer_reached': reached}), flush=True)
+    sock.bind((source, port))
+    def refresh():
+        mappings=[]
+        for address in ['198.51.100.2', '198.51.100.3']:
+            sock.sendto(b'probe', (address, 3478)); mappings.append(json.loads(sock.recv(1024)))
+        print(json.dumps({'mappings': mappings}),flush=True)
+    refresh()
+    for line in sys.stdin:
+        command=json.loads(line)
+        if command['action']=='refresh':refresh()
+        elif command['action']=='receive':
+            try: reached=sock.recv(1024).decode()==command['token']
+            except socket.timeout:reached=False
+            print(json.dumps({'third_peer_reached':reached}),flush=True)
 
 
 def tcp_client():
+    stop=threading.Event()
+    signal.signal(signal.SIGTERM,lambda *_:stop.set())
     with socket.create_connection(('198.51.100.2', 8080), timeout=4) as sock:
-        for _ in range(200):
+        print('TCP_CLIENT_READY',flush=True)
+        until=time.monotonic()+90
+        while not stop.is_set() and time.monotonic()<until:
             expected=b'actual-flow-offload-probe';sock.sendall(expected);received=b''
             while len(received)<len(expected):
                 chunk=sock.recv(len(expected)-len(received))
@@ -65,8 +77,8 @@ def tcp_client():
             time.sleep(0.02)
 
 
-def configuration(fullcone=0, hardware=0, cca='cubic'):
-    Path('/etc/config/turboacc').write_text(f"config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '{hardware}'\n option fullcone '{fullcone}'\n option tcpcca '{cca}'\n")
+def configuration(fullcone=0, hardware=0, cca='cubic', protocol='udp'):
+    Path('/etc/config/turboacc').write_text(f"config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '{hardware}'\n option fullcone '{fullcone}'\n option fullcone_protocol '{protocol}'\n option tcpcca '{cca}'\n")
 
 
 def apply():
@@ -80,17 +92,28 @@ def apply():
     return json.loads(result.stdout)
 
 
-def udp_probe(port):
-    child=subprocess.Popen(['ip','netns','exec','client',sys.executable,__file__,'udp-client',str(port)],stdout=subprocess.PIPE,text=True)
-    first=child.stdout.readline(); data=json.loads(first)
-    endpoint=data['mappings'][0]
-    sender="import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bind(('198.51.100.4',3480));s.sendto(b'unsolicited-third-peer',(%r,%d))"%(endpoint[0],endpoint[1])
-    run('ip','netns','exec','external',sys.executable,'-c',sender)
-    rest,_=child.communicate(timeout=5)
-    assert child.returncode==0
-    data.update(json.loads(rest.strip()))
-    print('TURBOACC_UDP_PACKET_RESULT='+json.dumps(data),flush=True)
-    return data
+class UDPProbe:
+    def __init__(self,port,source='192.0.2.2'):
+        self.child=subprocess.Popen(['ip','netns','exec','client',sys.executable,__file__,'udp-client',str(port),source],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
+        self.mappings=json.loads(self.child.stdout.readline())['mappings'];self.sequence=0
+    def command(self,value):
+        self.child.stdin.write(json.dumps(value)+'\n');self.child.stdin.flush()
+        return json.loads(self.child.stdout.readline())
+    def refresh(self):
+        self.mappings=self.command({'action':'refresh'})['mappings']
+        assert self.mappings[0]==self.mappings[1],self.mappings
+    def receive_from(self,address='198.51.100.4',port=3480):
+        self.sequence+=1;token='udp-packet-'+str(self.sequence)
+        endpoint=self.mappings[0]
+        sender="import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bind((%r,%d));s.sendto(%r,(%r,%d))"%(address,port,token.encode(),endpoint[0],endpoint[1])
+        run('ip','netns','exec','external',sys.executable,'-c',sender)
+        reached=self.command({'action':'receive','token':token})['third_peer_reached']
+        print('TURBOACC_UDP_PACKET_RESULT='+json.dumps({'mappings':self.mappings,'sender':address,'sender_port':port,'reached':reached}),flush=True)
+        return reached
+    def __enter__(self):return self
+    def __exit__(self,*_):
+        self.child.stdin.close();self.child.wait(timeout=5)
+        assert self.child.returncode==0
 
 
 def main():
@@ -107,6 +130,7 @@ def main():
         run('ip','-n',namespace,'link','set','lo','up')
         run('ip','-n',namespace,'link','set',peer,'up')
     run('ip','-n','client','addr','add','192.0.2.2/24','dev','client0')
+    run('ip','-n','client','addr','add','192.0.2.3/24','dev','client0')
     run('ip','-n','client','route','add','default','via','192.0.2.1')
     for address in ['198.51.100.2/24','198.51.100.3/24','198.51.100.4/24']:
         run('ip','-n','external','addr','add',address,'dev','external0')
@@ -125,6 +149,7 @@ def main():
     network_hash=hashlib.sha256(Path('/etc/config/network').read_bytes()).hexdigest()
     assert Path('/proc/sys/net/netfilter/nf_conntrack_nat_mode').read_text().strip()=='0'
     assert run('uci','-q','get','turboacc.config.fullcone').stdout.strip()=='0'
+    assert run('uci','-q','get','turboacc.config.fullcone_protocol').stdout.strip()=='udp'
     results['fullcone_kernel_and_package_default_disabled']=True
     configuration(0,0,'reno'); before=apply()
     assert before['tcp_congestion_control']=='reno' and before['software_rules_active']
@@ -138,29 +163,69 @@ def main():
     assert 'Netfilter' in json.loads(run(rpc,'call','getFastPathStat').stdout)['type']
     assert json.loads(run(rpc,'call','getMTKPPEStat').stdout)=={'PPE_NUM':0}
     results['original_turboacc_rpc_contract_reports_real_backend_state']=True
-    off=udp_probe(41000);assert not off['third_peer_reached'],off
+    with UDPProbe(41000) as probe:assert not probe.receive_from()
     results['ordinary_nat_blocks_unknown_udp_peer']=True
-    configuration(2,0,'cubic'); after=apply()
-    assert after['fullcone_mode']==2 and after['tcp_congestion_control']=='cubic'
-    assert 'Broadcom' in json.loads(run(rpc,'call','getFullConeStat').stdout)['type']
-    assert json.loads(run(rpc,'call','getTCPCCAStat').stdout)['type']=='cubic'
-    on=udp_probe(41002)
-    assert on['mappings'][0]==on['mappings'][1],on
-    assert on['third_peer_reached'],on
-    results['fullcone_endpoint_independent_mapping_and_filtering']=True
-    client=subprocess.Popen(['ip','netns','exec','client',sys.executable,__file__,'tcp-client'])
+
+    configuration(1,0,'cubic');restricted=apply()
+    assert restricted['fullcone_mode']==1
+    assert 'Address-restricted' in json.loads(run(rpc,'call','getFullConeStat').stdout)['type']
+    with UDPProbe(41002) as probe:
+        assert probe.mappings[0]==probe.mappings[1]
+        assert not probe.receive_from()
+        assert probe.receive_from('198.51.100.2',3480)
+        with UDPProbe(41002,'192.0.2.3') as second:
+            assert second.mappings[0]==second.mappings[1]
+            assert second.mappings[0]!=probe.mappings[0]
+            assert second.receive_from('198.51.100.2',3480)
+    results['restricted_cone_allows_contacted_ip_new_port_and_blocks_unknown_ip']=True
+    results['restricted_cone_prevents_two_clients_claiming_same_external_port']=True
+
+    client=subprocess.Popen(['ip','netns','exec','client',sys.executable,__file__,'tcp-client'],stdout=subprocess.PIPE,text=True)
+    assert client.stdout.readline().strip()=='TCP_CLIENT_READY'
     time.sleep(1)
     entries=Path('/proc/net/nf_conntrack').read_text()
     tcp_entries=[line for line in entries.splitlines()
                  if ' tcp ' in ' '+line and 'dst=198.51.100.2 ' in line and 'dport=8080 ' in line]
     assert any('[OFFLOAD]' in line for line in tcp_entries),entries
     print('TURBOACC_TCP_CONNTRACK='+json.dumps(tcp_entries),flush=True)
-    client.wait(timeout=8);assert client.returncode==0
     results['tcp_data_and_actual_software_flow_offload']=True
+
+    configuration(2,0,'cubic'); after=apply()
+    assert after['fullcone_mode']==2 and after['tcp_congestion_control']=='cubic'
+    assert 'Broadcom' in json.loads(run(rpc,'call','getFullConeStat').stdout)['type']
+    assert json.loads(run(rpc,'call','getTCPCCAStat').stdout)['type']=='cubic'
+    with UDPProbe(41004) as probe:
+        assert probe.mappings[0]==probe.mappings[1]
+        assert probe.receive_from()
+        assert probe.receive_from('198.51.100.2',3480)
+        results['fullcone_endpoint_independent_mapping_and_filtering']=True
+        configuration(1,0);apply()
+        # Keep the same bound socket open. Neither old wildcard expectations
+        # nor previously accepted RELATED child connections may survive.
+        assert not probe.receive_from()
+        assert not probe.receive_from('198.51.100.2',3480)
+        probe.refresh()
+        assert not probe.receive_from()
+        assert probe.receive_from('198.51.100.2',3480)
+        results['full_to_restricted_removes_old_wildcard_and_related_flows']=True
+        configuration(0,0);apply()
+        assert not probe.receive_from()
+        assert not probe.receive_from('198.51.100.2',3480)
+        probe.refresh()
+        assert not probe.receive_from()
+        assert not probe.receive_from('198.51.100.2',3480)
+        results['disabled_mode_removes_existing_cone_state_and_restores_default_nat']=True
+    assert client.poll() is None
+    configuration(2,0);apply()
     original=Path('/etc/config/firewall').read_bytes()
     configuration(3,0)
     assert run('/usr/libexec/turboacc-control','apply',check=False).returncode!=0
     assert Path('/etc/config/firewall').read_bytes()==original
+    configuration(2,0,protocol='tcp')
+    assert run('/usr/libexec/turboacc-control','apply',check=False).returncode!=0
+    assert Path('/etc/config/firewall').read_bytes()==original
+    assert json.loads(run('/usr/libexec/turboacc-control','status').stdout)['fullcone_mode']==2
+    results['non_udp_cone_configuration_rejected_without_runtime_changes']=True
     configuration(2,1)
     assert run('/usr/libexec/turboacc-control','apply',check=False).returncode!=0
     assert Path('/etc/config/firewall').read_bytes()==original
@@ -184,10 +249,12 @@ def main():
     assert Path('/etc/config/firewall').read_bytes()==original
     run('uci','revert','firewall')
     results['unrelated_pending_firewall_changes_preserved']=True
-    configuration(0,0);apply();off_again=udp_probe(41004)
-    assert not off_again['third_peer_reached'],off_again
-    assert json.loads(run(rpc,'call','getFullConeStat').stdout)=={}
-    results['disable_fullcone_restores_restricted_inbound_udp']=True
+    configuration(0,0);apply()
+    with UDPProbe(41006) as probe:assert not probe.receive_from()
+    assert 'System default' in json.loads(run(rpc,'call','getFullConeStat').stdout)['type']
+    assert client.poll() is None
+    client.terminate();client.wait(timeout=5);assert client.returncode==0
+    results['same_tcp_connection_survives_udp_nat_mode_changes']=True
     assert hashlib.sha256(Path('/etc/config/network').read_bytes()).hexdigest()==network_hash
     results['network_and_interface_configuration_unchanged']=True
     status=json.loads(run('/usr/libexec/turboacc-control','status').stdout)
@@ -200,7 +267,7 @@ def main():
 
 if len(sys.argv)>1:
     if sys.argv[1]=='server':server()
-    elif sys.argv[1]=='udp-client':udp_client(int(sys.argv[2]))
+    elif sys.argv[1]=='udp-client':udp_client(int(sys.argv[2]),sys.argv[3])
     elif sys.argv[1]=='tcp-client':tcp_client()
 else:
     try:main()

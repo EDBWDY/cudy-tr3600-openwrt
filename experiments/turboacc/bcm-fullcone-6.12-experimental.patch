@@ -85,7 +85,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
  
  struct masq_dev_work {
  	struct work_struct work;
-@@ -24,6 +27,134 @@
+@@ -24,6 +27,143 @@
  static unsigned int masq_refcnt __read_mostly;
  static atomic_t masq_worker_count __read_mostly;
  
@@ -117,8 +117,9 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +       int dir = CTINFO2DIR(ctinfo);
 +       struct nf_conn_help *help = nfct_help(ct);
 +       struct nf_conntrack_expect *exp;
++       unsigned int mode = READ_ONCE(nf_conntrack_nat_mode);
 +
-+       if (dir != IP_CT_DIR_ORIGINAL ||
++       if (!mode || dir != IP_CT_DIR_ORIGINAL ||
 +           help->expecting[NF_CT_EXPECT_CLASS_DEFAULT])
 +               return NF_ACCEPT;
 +
@@ -131,7 +132,8 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +       if ((exp = nf_ct_expect_alloc(ct)) == NULL)
 +               return NF_ACCEPT;
 +
-+       nf_ct_expect_init(exp, NF_CT_EXPECT_CLASS_DEFAULT, AF_INET, NULL,
++       nf_ct_expect_init(exp, NF_CT_EXPECT_CLASS_DEFAULT, AF_INET,
++                         mode == 1 ? &ct->tuplehash[dir].tuple.dst.u3 : NULL,
 +                         &ct->tuplehash[!dir].tuple.dst.u3, IPPROTO_UDP,
 +                         NULL, &ct->tuplehash[!dir].tuple.dst.u.udp.port);
 +       exp->flags = NF_CT_EXPECT_PERMANENT;
@@ -168,21 +170,28 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +/****************************************************************************/
 +static inline int find_exp(__be32 ip, __be16 port, struct nf_conn *ct)
 +{
-+       struct nf_conntrack_tuple tuple;
-+       struct nf_conntrack_expect *i = NULL;
++       struct nf_conntrack_expect *i;
++       unsigned int h;
++       bool found = false;
 +
-+
-+       memset(&tuple, 0, sizeof(tuple));
-+       tuple.src.l3num = AF_INET;
-+       tuple.dst.protonum = IPPROTO_UDP;
-+       tuple.dst.u3.ip = ip;
-+       tuple.dst.u.udp.port = port;
-+
++       /* Restricted expectations have a non-wildcard source address, so
++        * reserve the external port independently of that source filter. */
 +       rcu_read_lock();
-+       i = __nf_ct_expect_find(nf_ct_net(ct), nf_ct_zone(ct), &tuple);
++       for (h = 0; h < nf_ct_expect_hsize && !found; h++) {
++               hlist_for_each_entry_rcu(i, &nf_ct_expect_hash[h], hnode) {
++                       if (nf_ct_net(i->master) == nf_ct_net(ct) &&
++                           nf_ct_zone_equal(i->master, nf_ct_zone(ct),
++                                            IP_CT_DIR_ORIGINAL) &&
++                           i->tuple.dst.protonum == IPPROTO_UDP &&
++                           i->tuple.dst.u3.ip == ip &&
++                           i->tuple.dst.u.udp.port == port) {
++                               found = true;
++                               break;
++                       }
++               }
++       }
 +       rcu_read_unlock();
-+
-+       return i != NULL;
++       return found;
 +}
 +
 +/****************************************************************************/
@@ -205,7 +214,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +                           nf_inet_addr_cmp(&i->saved_addr, &tp->src.u3) &&
 +                           i->saved_proto.all == tp->src.u.all &&
 +                           i->tuple.dst.protonum == tp->dst.protonum &&
-+                           i->tuple.src.u3.ip == 0 &&
++                           i->expectfn == bcm_nat_expect &&
 +                           i->tuple.src.u.udp.port == 0) {
 +                               exp = i;
 +                               break;
@@ -220,7 +229,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
  unsigned int
  nf_nat_masquerade_ipv4(struct sk_buff *skb, unsigned int hooknum,
  		       const struct nf_nat_range2 *range,
-@@ -60,6 +191,76 @@
+@@ -60,6 +200,76 @@
  	nat = nf_ct_nat_ext_add(ct);
  	if (nat)
  		nat->masq_index = out->ifindex;

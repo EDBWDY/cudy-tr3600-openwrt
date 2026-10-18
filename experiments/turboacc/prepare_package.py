@@ -37,12 +37,24 @@ def prepare(destination):
     text=text.replace(marker,marker+"\n'require turboacc_safety';")
     marker="\t\to.value('0', _('Disable'))\n\t\to.value('2', _('Boardcom_FULLCONE_NAT'));"
     if text.count(marker)!=1:raise RuntimeError('Pinned Full Cone option differs')
-    text=text.replace(marker,marker+"\n\t\to.onchange = function(ev, section_id, value) {\n\t\t\tturboacc_safety.confirmFullCone(this, section_id, value);\n\t\t};")
+    choices="\t\to.value('0', _('System default NAT'));\n\t\to.value('1', _('Address-restricted cone NAT (UDP)'));\n\t\to.value('2', _('Full Cone NAT (UDP)'));"
+    text=text.replace(marker,choices+"\n\t\to.onchange = function(ev, section_id, value) {\n\t\t\tturboacc_safety.confirmConeNat(this, section_id, value);\n\t\t};")
+    old_description="Full cone NAT (NAT1) can improve gaming performance effectively."
+    description='These modes apply to IPv4 UDP only. TCP and other protocols keep system default NAT. Changing the mode clears existing IPv4 UDP state and may briefly reconnect UDP applications.'
+    if text.count(old_description)!=1:raise RuntimeError('Pinned cone NAT description differs')
+    text=text.replace(old_description,description)
+    text=text.replace("_('Full Cone NAT')","_('UDP NAT mode')").replace("_('Full cone NAT')","_('UDP NAT mode')")
     frontend.write_text(text)
     translations={
-        'Full Cone NAT security warning':'全锥形 NAT 安全警告',
+        'System default NAT':'系统默认 NAT',
+        'UDP NAT mode':'UDP NAT 模式',
+        'Address-restricted cone NAT (UDP)':'受限锥形 NAT（按来源 IP，UDP）',
+        'Full Cone NAT (UDP)':'全锥形 NAT（UDP）',
+        'UDP cone NAT security warning':'UDP 锥形 NAT 安全警告',
         'Enabling Full Cone NAT allows arbitrary external hosts to send packets through existing UDP mappings to internal devices. This increases exposure to unsolicited traffic and attacks. Enable it only when needed for games or P2P, and protect the internal devices.':'启用全锥形 NAT 后，外部任意主机可能通过已有的 UDP 映射向内网设备发送数据，增加被扫描或攻击的风险。请仅在确有游戏或 P2P 穿透需求时启用，并做好内网设备防护。',
         'The feature stays disabled until you confirm. Save and apply the configuration to activate it.':'确认前保持关闭；确认后还需保存并应用配置才会生效。',
+        'Address-restricted cone NAT allows previously contacted external IP addresses to send packets from any source port through existing UDP mappings. This is less restrictive than the system default NAT. Enable it only when needed.':'受限锥形 NAT 允许已联系过的外部 IP 从任意来源端口通过已有 UDP 映射发送数据，限制弱于系统默认 NAT，请仅在确有需要时启用。',
+        description:'这些模式仅作用于 IPv4 UDP；TCP 和其他协议保持系统默认 NAT。切换模式会清理已有 IPv4 UDP 连接，相关应用可能短暂重连。',
         'Keep disabled':'保持关闭',
         'Understand the risk and continue':'了解风险，继续',
     }
@@ -52,13 +64,13 @@ def prepare(destination):
             for original,translation in translations.items():
                 output.write('\nmsgid '+json.dumps(original,ensure_ascii=False)+'\nmsgstr '+json.dumps(translation if translated else '',ensure_ascii=False)+'\n')
     target=destination/'root/etc/config/turboacc';target.parent.mkdir(parents=True,exist_ok=True)
-    target.write_text("config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '1'\n option fullcone '0'\n option tcpcca 'cubic'\n")
+    target.write_text("config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '1'\n option fullcone '0'\n option fullcone_protocol 'udp'\n option tcpcca 'cubic'\n")
     (destination/'Makefile').write_text('''# SPDX-License-Identifier: GPL-3.0-only
 # Frontend: Copyright (C) 2018 Lean; Copyright (C) 2019-2022 ImmortalWrt.org
 include $(TOPDIR)/rules.mk
 PKG_LICENSE:=GPL-3.0-only
 LUCI_TITLE:=TurboACC for mainline MediaTek PPE and Netfilter
-LUCI_DEPENDS:=+firewall4 +nftables-json +jsonfilter +kmod-nft-offload
+LUCI_DEPENDS:=+firewall4 +nftables-json +jsonfilter +conntrack +kmod-nft-offload +kmod-nf-conntrack-netlink
 LUCI_PKGARCH:=all
 include $(TOPDIR)/feeds/luci/luci.mk
 ''')

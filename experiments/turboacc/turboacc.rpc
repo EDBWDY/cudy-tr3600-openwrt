@@ -21,9 +21,13 @@ call:getFastPathStat)
     else printf '{"type":"Netfilter flow offload"}\n'; fi
     ;;
 call:getFullConeStat)
-    if [ -r /proc/sys/net/netfilter/nf_conntrack_nat_mode ] && [ "$(cat /proc/sys/net/netfilter/nf_conntrack_nat_mode)" != 0 ]; then
-        printf '{"type":"Broadcom Fullcone (UDP)"}\n'
-    else printf '{}\n'; fi
+    mode=0
+    [ ! -r /proc/sys/net/netfilter/nf_conntrack_nat_mode ] || mode=$(cat /proc/sys/net/netfilter/nf_conntrack_nat_mode)
+    case "$mode" in
+        1) printf '{"type":"Address-restricted cone NAT (UDP)"}\n';;
+        2) printf '{"type":"Broadcom Fullcone (UDP)"}\n';;
+        *) printf '{"type":"System default NAT (UDP)"}\n';;
+    esac
     ;;
 call:getTCPCCAStat)
     printf '{"type":"%s"}\n' "$(cat /proc/sys/net/ipv4/tcp_congestion_control)"

@@ -58,6 +58,12 @@ def turboacc_syntax():
         run(command + [target], BUILD)
 
 
+def fullcone_warning():
+    runtime=raw('openwrt/luci',LOCK['luci_commit'],
+                'modules/luci-base/htdocs/luci-static/resources/luci.js',BUILD/'luci-runtime.js')
+    run(['node',HERE/'test_fullcone_safety.cjs',runtime],BUILD)
+
+
 kernel = BUILD / ('linux-' + LOCK['kernel']['version'])
 
 
@@ -184,6 +190,7 @@ def complete_openwrt_patch_stack():
 
 
 stage('upstream_turboacc_syntax_only', turboacc_syntax)
+stage('fullcone_warning_with_real_luci_class_runtime',fullcone_warning)
 stage('prepare_6_12_94_source', prepare_kernel)
 if RESULT['stages']['prepare_6_12_94_source'] == 'passed':
     stage('experimental_fullcone_and_nat_objects', compile_nat)

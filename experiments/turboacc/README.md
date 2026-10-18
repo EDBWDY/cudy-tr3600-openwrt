@@ -15,9 +15,9 @@ flashes a running router. Build outputs are experimental and are not releases.
   the mainline MediaTek PPE driver. This is distinct from the vendor
   `kmod-mediatek_hnat` driver and is reported as such.
 - The Broadcom-style UDP Full Cone NAT implementation from the pinned
-  MT798x tree, adapted to Linux 6.12.94. It defaults to disabled. TCP and
-  other protocols keep their existing NAT behavior. Existing tracked flows
-  may retain their previous behavior until they expire.
+  MT798x tree, adapted to Linux 6.12.94, with an additional address-restricted
+  cone mode. The default is system NAT. TCP and other protocols keep their
+  existing NAT behavior. Non-UDP cone configuration is rejected.
 - The original TurboACC frontend and five RPC methods, connected to actual
   kernel/firewall state. Unsupported vendor AP/PPE tuning controls are not
   advertised. A missing PPE or Full Cone backend causes an apply error.
@@ -28,11 +28,21 @@ configuration on failure. It preserves unrelated pending firewall edits.
 Detailed apply errors are retained in `/tmp/turboacc-last-error`.
 It does not modify LAN, DHCP, Wi-Fi, DNS, or host identity settings.
 
-Full Cone support is compiled in but defaults to disabled in both the kernel
-and the package configuration. Selecting it in LuCI opens a security warning
-about unsolicited inbound UDP traffic through existing mappings. Canceling
-or dismissing the warning keeps it off. Confirmation selects the feature;
-the normal save-and-apply action is still required to activate it.
+The three modes are `0` system default NAT, `1` address-restricted cone (an
+already-contacted external IP may send from a different source port), and
+`2` full cone (any external IP/port may use an existing UDP mapping).
+The two cone modes apply only to IPv4 UDP.
+
+Cone support is compiled in but defaults to disabled in both the kernel and
+the package configuration. Selecting a cone mode in LuCI opens a security
+warning specific to that mode. Canceling or dismissing the warning keeps it
+off. Confirmation selects the feature; the normal save-and-apply action is
+still required to activate it.
+
+Mode changes clear existing IPv4 UDP connection state, including wildcard
+expectations and already-related inbound child flows. UDP applications may
+briefly reconnect. This prevents an old full-cone mapping from staying open
+after selecting restricted or default NAT. TCP/IPv6 state is preserved.
 
 ## Reproduce
 
@@ -52,8 +62,11 @@ The checks cover:
    firmware image or a drop-in replacement for a running kernel.
 4. An isolated QEMU VM running the modified Linux 6.12.94 kernel and actual
    OpenWrt UCI, netifd, firewall4 and nftables. Packet fixtures test ordinary
-   NAT, UDP endpoint-independent mapping/filtering, TCP software flow offload,
-   configuration rejection, failure rollback and the original RPC contract.
+   NAT, restricted/full cone mapping and filtering, two-client port collisions,
+   live-socket restoration of default NAT, a TCP connection surviving UDP-only
+   mode changes, software flow offload, configuration rejection, failure
+   rollback and the original RPC contract. A separate test uses the actual
+   pinned LuCI class runtime to exercise enable/cancel/dismiss confirmation.
 
 Only documentation address ranges are used in the VM. No personal settings,
 router backups, keys or live network identifiers are build inputs.

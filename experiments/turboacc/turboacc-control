@@ -41,13 +41,18 @@ apply() {
     fp=$(get turboacc.config.fastpath disabled)
     hardware=$(get turboacc.config.fastpath_fo_hw 0)
     fullcone=$(get turboacc.config.fullcone 0)
+    protocol=$(get turboacc.config.fullcone_protocol udp)
     cca=$(get turboacc.config.tcpcca cubic)
     case "$fp" in disabled) software=0; hardware=0;; flow_offloading) software=1;; *) fail 'Unsupported fastpath engine for this backend';; esac
     case "$hardware" in 0|1) :;; *) fail 'Invalid hardware offload value';; esac
-    case "$fullcone" in 0|2) :;; *) fail 'Invalid fullcone value';; esac
+    case "$fullcone" in 0|1|2) :;; *) fail 'Invalid cone NAT value';; esac
+    [ "$protocol" = udp ] || fail 'Cone NAT is supported for IPv4 UDP only; TCP and other protocols keep default NAT'
     case "$cca" in ''|*[!a-zA-Z0-9_]*) fail 'Invalid TCP congestion control name';; esac
     if ! grep -qw "$cca" /proc/sys/net/ipv4/tcp_available_congestion_control; then fail 'TCP congestion algorithm is unavailable'; fi
-    if [ "$fullcone" = 2 ] && [ ! -w "$NAT_MODE" ]; then fail 'Fullcone kernel backend is unavailable'; fi
+    if [ "$fullcone" != 0 ] && [ ! -w "$NAT_MODE" ]; then fail 'Cone NAT kernel backend is unavailable'; fi
+    if [ -w "$NAT_MODE" ] && [ "$(cat "$NAT_MODE")" != "$fullcone" ]; then
+        command -v conntrack >/dev/null || fail 'conntrack is required to safely replace existing UDP NAT mappings'
+    fi
     if [ "$hardware" = 1 ] && [ ! -d /sys/kernel/debug/ppe0 ] && [ ! -d /sys/kernel/debug/ppe1 ]; then
         fail 'MediaTek PPE backend is unavailable; hardware offload was not enabled'
     fi
@@ -82,7 +87,30 @@ apply() {
     fw4 check >"$ERROR" 2>&1 || fail 'Firewall validation failed; original settings restored'
     uci commit firewall
     fw4 reload >>"$ERROR" 2>&1 || fail 'Firewall reload failed; original settings restored'
-    if [ -w "$NAT_MODE" ]; then printf '%s\n' "$fullcone" > "$NAT_MODE"; fi
+    if [ -w "$NAT_MODE" ] && [ "$old_mode" != "$fullcone" ]; then
+        # Do not leave wildcard expectations or already-related child flows
+        # active after changing mode. Stop creating cone mappings while
+        # deleting IPv4 UDP state; TCP and IPv6 state are preserved.
+        printf '0\n' > "$NAT_MODE"
+        udp_snapshot=$(mktemp /tmp/turboacc-udp.XXXXXX)
+        if ! conntrack -L -f ipv4 -p udp >"$udp_snapshot" 2>>"$ERROR"; then
+            rm -f "$udp_snapshot"
+            fail 'Unable to inspect existing UDP state; previous NAT settings restored'
+        fi
+        if [ -s "$udp_snapshot" ]; then
+            if ! conntrack -D -f ipv4 -p udp >>"$ERROR" 2>&1; then
+                # A flow can expire between listing and deletion. Only
+                # tolerate that race when a successful query proves no
+                # old UDP connections remain.
+                if ! conntrack -L -f ipv4 -p udp >"$udp_snapshot" 2>>"$ERROR" || [ -s "$udp_snapshot" ]; then
+                    rm -f "$udp_snapshot"
+                    fail 'Unable to clear old UDP mappings; previous NAT settings restored'
+                fi
+            fi
+        fi
+        rm -f "$udp_snapshot"
+        printf '%s\n' "$fullcone" > "$NAT_MODE"
+    fi
     printf '%s\n' "$cca" > "$CCA"
     if [ "$software" = 1 ] && ! nft list chain inet fw4 forward | grep -Eq 'flow (add|offload) @ft'; then
         fail 'Flow offload rule was not installed; original settings restored'

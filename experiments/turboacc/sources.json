@@ -6,6 +6,7 @@
   },
   "openwrt_commit": "046aec0dccd90f5a156cb8e9725c121c81955dd3",
   "mt76_commit": "39c960c3ada558b4c2e7915772483d3731573d09",
+  "luci_commit": "be446e365cfd2cfee549a0c32af884dfb2cced66",
   "backports": {
     "version": "6.18.39",
     "url": "https://github.com/openwrt/backports/releases/download/backports-v6.18.39/backports-6.18.39.tar.zst",
