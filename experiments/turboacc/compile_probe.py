@@ -87,8 +87,14 @@ def prepare_kernel():
          '--module', 'NF_CT_NETLINK', '--enable', 'NETFILTER_XTABLES',
          '--module', 'NETFILTER_XT_TARGET_MASQUERADE', '--module', 'NF_TABLES',
          '--module', 'NFT_MASQ', '--module', 'NFT_FLOW_OFFLOAD',
-         '--enable', 'NET_MEDIATEK_SOC_WED'], kernel)
+         '--module', 'NF_FLOW_TABLE', '--enable', 'ARCH_MEDIATEK',
+         '--enable', 'NET_VENDOR_MEDIATEK', '--module', 'NET_MEDIATEK_SOC'], kernel)
     run(['make', 'ARCH=arm64', 'CROSS_COMPILE=aarch64-linux-gnu-', 'olddefconfig'], kernel)
+    config = (kernel / '.config').read_text().splitlines()
+    for required in ['CONFIG_NET_MEDIATEK_SOC=m', 'CONFIG_NET_MEDIATEK_SOC_WED=y',
+                     'CONFIG_NF_CONNTRACK=m', 'CONFIG_NF_NAT=m']:
+        if required not in config:
+            raise RuntimeError('Compile harness dropped required configuration: ' + required)
     run(['make', '-j4', 'ARCH=arm64', 'CROSS_COMPILE=aarch64-linux-gnu-', 'prepare'], kernel)
 
 
