@@ -56,8 +56,12 @@ def udp_client(port):
 def tcp_client():
     with socket.create_connection(('198.51.100.2', 8080), timeout=4) as sock:
         for _ in range(200):
-            sock.sendall(b'actual-flow-offload-probe')
-            if sock.recv(1024) != b'actual-flow-offload-probe': raise RuntimeError('TCP data mismatch')
+            expected=b'actual-flow-offload-probe';sock.sendall(expected);received=b''
+            while len(received)<len(expected):
+                chunk=sock.recv(len(expected)-len(received))
+                if not chunk:raise RuntimeError('TCP stream closed early')
+                received+=chunk
+            if received != expected: raise RuntimeError('TCP data mismatch')
             time.sleep(0.02)
 
 
@@ -85,6 +89,7 @@ def udp_probe(port):
     rest,_=child.communicate(timeout=5)
     assert child.returncode==0
     data.update(json.loads(rest.strip()))
+    print('TURBOACC_UDP_PACKET_RESULT='+json.dumps(data),flush=True)
     return data
 
 
@@ -143,7 +148,10 @@ def main():
     client=subprocess.Popen(['ip','netns','exec','client',sys.executable,__file__,'tcp-client'])
     time.sleep(1)
     entries=Path('/proc/net/nf_conntrack').read_text()
-    assert 'OFFLOAD' in entries,entries
+    tcp_entries=[line for line in entries.splitlines()
+                 if ' tcp ' in ' '+line and 'dst=198.51.100.2 ' in line and 'dport=8080 ' in line]
+    assert any('[OFFLOAD]' in line for line in tcp_entries),entries
+    print('TURBOACC_TCP_CONNTRACK='+json.dumps(tcp_entries),flush=True)
     client.wait(timeout=8);assert client.returncode==0
     results['tcp_data_and_actual_software_flow_offload']=True
     original=Path('/etc/config/firewall').read_bytes()
