@@ -46,3 +46,24 @@ jobs:
       - name: Source regression outcome
         if: steps.tests.outcome != 'success'
         run: exit 1
+  checkpoint-transport:
+    name: Real encrypted Release checkpoint transport (synthetic fixture only)
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install checkpoint prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y zstd python3-cryptography
+      - name: Prove actual Release transfer before compiling for hours
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CHECKPOINT_KEY: ${{ secrets.TR3600_CHECKPOINT_KEY_V1 }}
+        run: python3 -u scripts/checkpoint_transport.py

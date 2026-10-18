@@ -29,7 +29,6 @@ class ReleaseCheckpointTests(unittest.TestCase):
             'build_dir/rust/.built': os.urandom(160000),
             'dl/pinned-source.tar.xz': b'pinned download',
             'key-build.pem': b'generated signing material must stay encrypted',
-            '.git/config': b'credential material must not be archived',
         }.items():
             path = self.tree / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -40,6 +39,14 @@ class ReleaseCheckpointTests(unittest.TestCase):
         stamp.with_name('symlink').symlink_to('.built')
         self.original = stamp.read_bytes()
         (self.root / 'compile-tools.status').write_text('0\n')
+        import subprocess
+        subprocess.run(['git', 'init', '-q', self.tree], check=True)
+        subprocess.run(['git', '-C', self.tree, '-c', 'user.name=Public fixture',
+                        '-c', 'user.email=test@example.invalid', 'commit',
+                        '--allow-empty', '-qm', 'public source metadata fixture'], check=True)
+        self.source_head = subprocess.check_output(['git', '-C', self.tree, 'rev-parse', 'HEAD'])
+        with (self.tree / '.git/config').open('a') as config:
+            config.write('\n[http]\n extraheader = synthetic credential must not be archived\n')
         self.assets = {}
         for name, value in [('ROOT', self.root), ('CHUNK', 65536), ('gh', self.fake_gh)]:
             mocked = patch.object(checkpoint, name, value)
@@ -59,7 +66,7 @@ class ReleaseCheckpointTests(unittest.TestCase):
         elif args[:2] != ('release', 'create'):
             raise AssertionError(args)
 
-    def test_encrypted_roundtrip_preserves_compiler_and_signing_key_but_excludes_git(self):
+    def test_encrypted_roundtrip_keeps_compiler_versions_and_key_but_excludes_git_credentials(self):
         checkpoint.save('test', 'tools')
         metadata = json.loads(self.assets[('test', 'checkpoint.json')])
         self.assertTrue(metadata['stage_complete'])
@@ -74,7 +81,9 @@ class ReleaseCheckpointTests(unittest.TestCase):
         self.assertEqual(stamp.stat().st_ino, stamp.with_name('hardlink').stat().st_ino)
         self.assertTrue(stamp.with_name('symlink').is_symlink())
         self.assertTrue((self.tree / 'key-build.pem').is_file())
-        self.assertFalse((self.tree / '.git').exists())
+        self.assertFalse((self.tree / '.git/config').exists())
+        import subprocess
+        self.assertEqual(subprocess.check_output(['git', '-C', self.tree, 'rev-parse', 'HEAD']), self.source_head)
 
     def test_incomplete_tools_can_resume_tools_but_cannot_advance_to_rust(self):
         (self.root / 'compile-tools.status').write_text('124\n')

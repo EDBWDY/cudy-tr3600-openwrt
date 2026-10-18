@@ -42,6 +42,11 @@ def refresh(root, metadata, changed):
     integrate(source, replace_patches=True)
     subprocess.run(['make', 'defconfig'], cwd=source, check=True)
     old, new = configuration_values(before), configuration_values((source / '.config').read_text())
+    requested = [line for line in (root / 'config.seed').read_text().splitlines()
+                 if line.startswith('CONFIG_') and line.endswith('=y')]
+    missing = [line for line in requested if new.get(line[:-2]) != 'y']
+    if missing:
+        raise RuntimeError('Target refresh dropped requested packages/options: ' + str(missing))
     config_delta = [key for key in old.keys() | new.keys() if old.get(key) != new.get(key)]
     if any(not key.startswith(('CONFIG_PACKAGE_', 'CONFIG_KERNEL_')) for key in config_delta):
         raise RuntimeError('Target architecture/compiler configuration changed; refuse compiler reuse')

@@ -30,7 +30,7 @@ def recipe(root):
                                       'zerotier-config.openwrt.js')]
     validation_only = {'verify.py', 'audit_downloaded.py', 'image_extraction.py',
                        'kernel_audit.py', 'feature_requirements.py', 'privacy_audit.py',
-                       'checkpoint.py', 'release_checkpoint.py', 'release_outputs.py',
+                       'checkpoint.py', 'checkpoint_transport.py', 'release_checkpoint.py', 'release_outputs.py',
                        'collect-unverified.py', 'check-toolchain-reuse.py',
                        'refresh_customizations.py', 'refresh_target.py', 'public_source_audit.py'}
     experiment_build = {'sources.json', 'prepare_package.py', 'integrate_openwrt.py',

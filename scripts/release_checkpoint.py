@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Authenticated, streaming build checkpoints in Release assets, not Actions storage.
 
-Only the OpenWrt compiler tree is archived. Git credentials and runner home are
-excluded. AES-GCM also protects generated package-signing keys in the tree.
+Only the OpenWrt compiler tree is archived. Git credential configuration and
+runner home are excluded. Public source Git objects/refs/index remain intact
+so restored package versions and build stamps do not drift. AES-GCM also
+protects generated package-signing keys in the tree.
 The key lives in an Actions secret, never in a public asset or build environment.
 """
 import argparse
@@ -74,9 +76,11 @@ def save(tag, stage):
     }
     aes = cipher()
     create_release(tag, f'TR3600 {stage} compiler checkpoint {metadata["run_id"]}')
-    # Exclude all VCS metadata (including any checkout credentials), runner/home
-    # state and filesystem sockets. Package-signing keys remain encrypted.
-    tar = subprocess.Popen(['tar', '--format=posix', '--exclude=.git',
+    # Retain public source version metadata, but exclude credential-bearing
+    # Git configs and hooks. Removing entire .git directories changes getver
+    # and LuCI package version calculations after restore.
+    tar = subprocess.Popen(['tar', '--format=posix', '--exclude=*/.git/config',
+                            '--exclude=*/.git/config.worktree', '--exclude=*/.git/hooks',
                             '--exclude=.ssh', '--exclude=.aws', '--exclude=.codex',
                             '-cf', '-', '-C', str(ROOT), 'openwrt'], stdout=subprocess.PIPE)
     zstd = subprocess.Popen(['zstd', '-1', '-T2', '-c'], stdin=tar.stdout, stdout=subprocess.PIPE)

@@ -32,7 +32,7 @@
 
 ## 检查点
 
-检查点是 GNU PAX tar + zstd 流式压缩的完整 OpenWrt 构建目录，保留 stamp、硬链接、纳秒时间戳和 dl 下载包；不重新 checkout 编译子目录。Git 元数据和主目录凭据不进入归档。每个 128 MiB 压缩块用 AES-256-GCM 认证加密后上传 Release，最后才上传完整清单；中断的上传不会被误当作完整检查点。
+检查点是 GNU PAX tar + zstd 流式压缩的完整 OpenWrt 构建目录，保留 stamp、硬链接、纳秒时间戳和 dl 下载包；不重新 checkout 编译子目录。保留上游公开源码的 Git 对象、refs 和 index，以维持 getver/LuCI 包版本；排除可能携带凭据的 Git 配置、hooks 和主目录状态。每个 128 MiB 压缩块用 AES-256-GCM 认证加密后上传 Release，最后才上传完整清单；中断的上传不会被误当作完整检查点。
 
 恢复密钥是 `TR3600_CHECKPOINT_KEY_V1` Actions Secret，只在保存/恢复步骤可用，编译步骤不能读取该环境变量。它也保护构建系统生成的包签名私钥。不要删除这个 Secret，否则既有检查点无法恢复。
 
