@@ -85,7 +85,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
  
  struct masq_dev_work {
  	struct work_struct work;
-@@ -24,6 +27,129 @@
+@@ -24,6 +27,134 @@
  static unsigned int masq_refcnt __read_mostly;
  static atomic_t masq_worker_count __read_mostly;
  
@@ -186,7 +186,8 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +}
 +
 +/****************************************************************************/
-+static inline struct nf_conntrack_expect *find_fullcone_exp(struct nf_conn *ct)
++static inline struct nf_conntrack_expect *find_fullcone_exp(struct nf_conn *ct,
++                                                            __be32 newsrc)
 +{
 +       struct nf_conntrack_tuple * tp =
 +               &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple;
@@ -197,7 +198,11 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +       rcu_read_lock();
 +       for (h = 0; h < nf_ct_expect_hsize; h++) {
 +               hlist_for_each_entry_rcu(i, &nf_ct_expect_hash[h], hnode) {
-+                       if (nf_inet_addr_cmp(&i->saved_addr, &tp->src.u3) &&
++                       if (nf_ct_net(i->master) == nf_ct_net(ct) &&
++                           nf_ct_zone_equal(i->master, nf_ct_zone(ct),
++                                            IP_CT_DIR_ORIGINAL) &&
++                           i->tuple.dst.u3.ip == newsrc &&
++                           nf_inet_addr_cmp(&i->saved_addr, &tp->src.u3) &&
 +                           i->saved_proto.all == tp->src.u.all &&
 +                           i->tuple.dst.protonum == tp->dst.protonum &&
 +                           i->tuple.src.u3.ip == 0 &&
@@ -215,7 +220,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
  unsigned int
  nf_nat_masquerade_ipv4(struct sk_buff *skb, unsigned int hooknum,
  		       const struct nf_nat_range2 *range,
-@@ -60,6 +186,76 @@
+@@ -60,6 +191,76 @@
  	nat = nf_ct_nat_ext_add(ct);
  	if (nat)
  		nat->masq_index = out->ifindex;
@@ -237,7 +242,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +               /* Choose port */
 +               spin_lock_bh(&nf_conntrack_expect_lock);
 +               /* Look for existing expectation */
-+               exp = find_fullcone_exp(ct);
++               exp = find_fullcone_exp(ct, newsrc);
 +               if (exp) {
 +                       minport = maxport = exp->tuple.dst.u.udp.port;
 +                       pr_debug("bcm_nat: existing mapped port = %hu\n",

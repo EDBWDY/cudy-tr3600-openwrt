@@ -190,6 +190,9 @@ if RESULT['stages']['prepare_6_12_94_source'] == 'passed':
     stage('ported_mt7987_wed_objects', compile_wed_baseline)
     stage('ported_mt76_with_matching_backports', wed_mt76_dependency_check)
     stage('complete_openwrt_kernel_patch_stack_and_package_integration', complete_openwrt_patch_stack)
+    if RESULT['stages']['complete_openwrt_kernel_patch_stack_and_package_integration'] == 'passed':
+        from link_probe import verify_links
+        stage('complete_arm64_kernel_and_paired_module_links', lambda: verify_links(BUILD, LOCK, run))
     from runtime_vm import verify_runtime
     stage('real_openwrt_fw4_fullcone_packet_tests_in_vm', lambda: verify_runtime(BUILD, download, run))
 print(json.dumps(RESULT, indent=2), flush=True)

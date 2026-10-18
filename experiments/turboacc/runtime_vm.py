@@ -75,7 +75,12 @@ reboot -f
         process=subprocess.run(['sudo','sh','-c','find . -print0 | cpio --null -o --format=newc 2>/dev/null | gzip -1'],cwd=root,stdout=output,check=True)
     acceleration='kvm' if os.access('/dev/kvm',os.R_OK|os.W_OK) else 'tcg'
     command=['qemu-system-x86_64','-accel',acceleration,'-cpu','host' if acceleration=='kvm' else 'max','-m','768M','-nographic','-no-reboot','-nic','none','-kernel',str(kernel/'arch/x86/boot/bzImage'),'-initrd',str(image),'-append','console=ttyS0 init=/init panic=1 turboacc_vm=1']
-    result=subprocess.run(command,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=240)
+    try:
+        result=subprocess.run(command,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=240)
+    except subprocess.TimeoutExpired as error:
+        output=error.stdout or b''
+        print(output.decode(errors='replace') if isinstance(output,bytes) else output,flush=True)
+        raise RuntimeError('The isolated VM exceeded its 240 second runtime limit') from error
     print(result.stdout,flush=True)
     if 'TURBOACC_VM_TESTS_PASSED' not in result.stdout or 'TURBOACC_VM_TEST_EXIT=0' not in result.stdout:
         raise RuntimeError('Real fw4/Netfilter packet tests did not pass')

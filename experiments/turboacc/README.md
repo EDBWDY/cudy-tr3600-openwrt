@@ -39,8 +39,12 @@ The checks cover:
 
 1. Pinned-source checksums and ARM64 compilation of NAT, WED and mt76.
 2. Application of the complete pinned OpenWrt kernel patch stack, including
-   the paired changes, and source-package integration.
-3. An isolated QEMU VM running the modified Linux 6.12.94 kernel and actual
+   the paired changes, source-package integration, and compilation of the
+   combined Ethernet/PPE/WED code.
+3. A minimal ARM64 kernel link followed by matching mac80211/mt76 module
+   links with modpost checks. This validation configuration is not a router
+   firmware image or a drop-in replacement for a running kernel.
+4. An isolated QEMU VM running the modified Linux 6.12.94 kernel and actual
    OpenWrt UCI, netifd, firewall4 and nftables. Packet fixtures test ordinary
    NAT, UDP endpoint-independent mapping/filtering, TCP software flow offload,
    configuration rejection, failure rollback and the original RPC contract.
