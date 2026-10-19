@@ -50,7 +50,8 @@ status() {
     json_dump
 }
 save() {
-    IFS= read -r payload || error '缺少设置参数'
+    # rpcd sends a complete JSON object followed by EOF, without a newline.
+    IFS= read -r payload || [ -n "$payload" ] || error '缺少设置参数'
     [ ${#payload} -le 4096 ] || error '设置参数过长'
     json_load "$payload" || error '设置参数格式错误'
     for name in software hardware wed nat_tcp risk_confirmed; do

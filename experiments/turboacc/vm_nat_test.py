@@ -230,7 +230,7 @@ def main():
     assert rejected.returncode and json.loads(rejected.stdout)['ok'] is False
     assert json.loads(run('/usr/libexec/turboacc-control','status').stdout)['fullcone_mode']==0
     request.update(nat='0',nat_tcp=False,cca='reno')
-    saved=subprocess.run([rpc,'call','saveUiSettings'],input=json.dumps(request)+'\n',text=True,capture_output=True)
+    saved=subprocess.run([rpc,'call','saveUiSettings'],input=json.dumps(request),text=True,capture_output=True)
     assert saved.returncode==0,(saved.stdout,saved.stderr)
     assert json.loads(saved.stdout)['configured']['cca']=='reno'
     results['card_rpc_reads_real_state_rejects_unconfirmed_risk_and_saves_through_controller']=True

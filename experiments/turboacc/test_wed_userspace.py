@@ -71,6 +71,39 @@ def validate():
         write('etc/config/turboacc', "config turboacc 'config'\n option wed_enable '2'\n")
         assert run('apply', check=False).returncode != 0 and modules.read_bytes() == previous
         print('WED_OPENWRT_USERSPACE_PASSED: absent/failed/attached, escaped logs, boot-option roundtrip, idempotence, invalid-value protection')
+        # RPC adapter compatibility with actual ash/UCI/jshn. Controller calls
+        # are a synthetic marker here; real Netfilter packets are tested in VM.
+        adapter=root/'usr/libexec/turboacc-ui'
+        shutil.copyfile(HERE/'turboacc-ui',adapter);adapter.chmod(0o755)
+        write('proc/sys/net/ipv4/tcp_available_congestion_control','reno cubic\n')
+        write('proc/sys/net/netfilter/nf_conntrack_nat_tcp','0\n')
+        controller=write('usr/libexec/turboacc-control','''#!/bin/sh
+if [ "$1" = apply ]; then
+ [ ! -f /tmp/ui-fail-apply ] || { echo 'Synthetic controller rejection' > /tmp/turboacc-last-error; exit 1; }
+ touch /tmp/ui-applied
+fi
+echo '{"software_rules_active":false,"hardware_rules_active":false,"ppe_bound_connections":0}'
+''');controller.chmod(0o755)
+        write('etc/config/turboacc',"config turboacc 'config'\n option fastpath 'disabled'\n option fullcone '0'\n option fullcone_tcp '0'\n option tcpcca 'cubic'\n option wed_enable '0'\n")
+        def request(payload):
+            return subprocess.run(['sudo','chroot',root,'/usr/libexec/turboacc-ui','save'],input=json.dumps(payload),text=True,capture_output=True)
+        payload=dict(software=False,hardware=False,wed=False,nat='0',nat_tcp=False,cca='reno',risk_confirmed=False)
+        saved=request(payload)
+        assert saved.returncode==0,(saved.stdout,saved.stderr)
+        assert json.loads(saved.stdout)['configured']['cca']=='reno'
+        assert (root/'tmp/ui-applied').exists()
+        (root/'tmp/ui-applied').unlink()
+        before=(root/'etc/config/turboacc').read_bytes()
+        for invalid in [dict(payload,software='true'),dict(payload,nat='2'),dict(payload,nat='3')]:
+            rejected=request(invalid)
+            assert rejected.returncode and json.loads(rejected.stdout)['ok'] is False
+            assert not (root/'tmp/ui-applied').exists()
+            assert (root/'etc/config/turboacc').read_bytes()==before
+        write('tmp/ui-fail-apply','fail\n')
+        rejected=request(dict(payload,cca='cubic'))
+        assert rejected.returncode and (root/'etc/config/turboacc').read_bytes()==before
+        print('CARD_RPC_USERSPACE_PASSED: EOF input, strict types, security confirmation, real UCI save and controller-failure rollback')
+        subprocess.run(['sudo','chown','-Rh',f'{os.getuid()}:{os.getgid()}',root],check=True)
 
 
 if __name__ == '__main__':
