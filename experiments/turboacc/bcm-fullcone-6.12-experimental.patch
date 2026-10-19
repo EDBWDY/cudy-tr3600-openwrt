@@ -21,6 +21,17 @@ diff --git a/include/net/netfilter/nf_nat_masquerade.h b/include/net/netfilter/n
  unsigned int
  nf_nat_masquerade_ipv4(struct sk_buff *skb, unsigned int hooknum,
  		       const struct nf_nat_range2 *range,
+diff --git a/include/net/netns/conntrack.h b/include/net/netns/conntrack.h
+--- a/include/net/netns/conntrack.h
++++ b/include/net/netns/conntrack.h
+@@ -102,6 +102,7 @@
+ 	u8			sysctl_acct;
+ 	u8			sysctl_tstamp;
+ 	u8			sysctl_checksum;
++	unsigned int		sysctl_nat_tcp; /* Explicit TCP cone opt-in */
+ 
+ 	struct ip_conntrack_stat __percpu *stat;
+ 	struct nf_ct_event_notifier __rcu *nf_conntrack_event_cb;
 diff --git a/include/uapi/linux/sysctl.h b/include/uapi/linux/sysctl.h
 --- a/include/uapi/linux/sysctl.h
 +++ b/include/uapi/linux/sysctl.h
@@ -48,15 +59,71 @@ diff --git a/net/netfilter/nf_conntrack_core.c b/net/netfilter/nf_conntrack_core
 diff --git a/net/netfilter/nf_conntrack_standalone.c b/net/netfilter/nf_conntrack_standalone.c
 --- a/net/netfilter/nf_conntrack_standalone.c
 +++ b/net/netfilter/nf_conntrack_standalone.c
-@@ -553,6 +553,7 @@
+@@ -553,6 +553,8 @@
  	NF_SYSCTL_CT_CHECKSUM,
  	NF_SYSCTL_CT_LOG_INVALID,
  	NF_SYSCTL_CT_EXPECT_MAX,
 +	NF_SYSCTL_CT_NAT_MODE,
++	NF_SYSCTL_CT_NAT_TCP,
  	NF_SYSCTL_CT_ACCT,
  #ifdef CONFIG_NF_CONNTRACK_EVENTS
  	NF_SYSCTL_CT_EVENTS,
-@@ -661,6 +662,15 @@
+@@ -613,6 +615,54 @@
+ 	NF_SYSCTL_CT_LAST_SYSCTL,
+ };
+ 
++/* Only our TCP cone masters and their RELATED children are removed.
++ * Ordinary forwarded TCP, local management, and other helpers are retained. */
++static bool nf_ct_is_tcp_cone(const struct nf_conn *ct)
++{
++    const struct nf_conn_help *help = nfct_help(ct);
++    const struct nf_conntrack_helper *helper;
++    bool found = false;
++
++    if (!help)
++        return false;
++    rcu_read_lock();
++    helper = rcu_dereference(help->helper);
++    if (helper && !strcmp(helper->name, "BCM-NAT-TCP"))
++        found = true;
++    rcu_read_unlock();
++    return found;
++}
++
++static int nf_ct_kill_tcp_cone(struct nf_conn *ct, void *data)
++{
++    return nf_ct_is_tcp_cone(ct) ||
++           (ct->master && nf_ct_is_tcp_cone(ct->master));
++}
++
++static DEFINE_MUTEX(nf_ct_nat_tcp_mutex);
++
++static int nf_ct_nat_tcp_sysctl(const struct ctl_table *ctl, int write,
++                               void *buffer, size_t *lenp, loff_t *ppos)
++{
++    struct net *net = container_of(ctl->data, struct net, ct.sysctl_nat_tcp);
++    struct nf_ct_iter_data iter = { .net = net };
++    unsigned int value = READ_ONCE(net->ct.sysctl_nat_tcp);
++    struct ctl_table temporary = *ctl;
++    int ret;
++
++    temporary.data = &value;
++    mutex_lock(&nf_ct_nat_tcp_mutex);
++    ret = proc_douintvec_minmax(&temporary, write, buffer, lenp, ppos);
++    if (!ret && write && value != READ_ONCE(net->ct.sysctl_nat_tcp)) {
++        WRITE_ONCE(net->ct.sysctl_nat_tcp, 0);
++        synchronize_net();
++        nf_ct_iterate_cleanup_net(nf_ct_kill_tcp_cone, &iter);
++        WRITE_ONCE(net->ct.sysctl_nat_tcp, value);
++    }
++    mutex_unlock(&nf_ct_nat_tcp_mutex);
++    return ret;
++}
++
+ static struct ctl_table nf_ct_sysctl_table[] = {
+ 	[NF_SYSCTL_CT_MAX] = {
+ 		.procname	= "nf_conntrack_max",
+@@ -661,6 +711,24 @@
  		.extra1		= SYSCTL_ONE,
  		.extra2		= SYSCTL_INT_MAX,
  	},
@@ -69,9 +136,26 @@ diff --git a/net/netfilter/nf_conntrack_standalone.c b/net/netfilter/nf_conntrac
 +		.extra1		= SYSCTL_ZERO,
 +		.extra2		= SYSCTL_TWO,
 +	},
++    [NF_SYSCTL_CT_NAT_TCP] = {
++        .procname = "nf_conntrack_nat_tcp",
++        .data = &init_net.ct.sysctl_nat_tcp,
++        .maxlen = sizeof(unsigned int),
++        .mode = 0644,
++        .proc_handler = nf_ct_nat_tcp_sysctl,
++        .extra1 = SYSCTL_ZERO,
++        .extra2 = SYSCTL_ONE,
++    },
  	[NF_SYSCTL_CT_ACCT] = {
  		.procname	= "nf_conntrack_acct",
  		.data		= &init_net.ct.sysctl_acct,
+@@ -1066,6 +1134,7 @@
+ 	table[NF_SYSCTL_CT_CHECKSUM].data = &net->ct.sysctl_checksum;
+ 	table[NF_SYSCTL_CT_LOG_INVALID].data = &net->ct.sysctl_log_invalid;
+ 	table[NF_SYSCTL_CT_ACCT].data = &net->ct.sysctl_acct;
++	table[NF_SYSCTL_CT_NAT_TCP].data = &net->ct.sysctl_nat_tcp;
+ #ifdef CONFIG_NF_CONNTRACK_EVENTS
+ 	table[NF_SYSCTL_CT_EVENTS].data = &net->ct.sysctl_events;
+ #endif
 diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade.c
 --- a/net/netfilter/nf_nat_masquerade.c
 +++ b/net/netfilter/nf_nat_masquerade.c
@@ -85,7 +169,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
  
  struct masq_dev_work {
  	struct work_struct work;
-@@ -24,6 +27,143 @@
+@@ -24,6 +27,155 @@
  static unsigned int masq_refcnt __read_mostly;
  static atomic_t masq_worker_count __read_mostly;
  
@@ -120,6 +204,8 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +       unsigned int mode = READ_ONCE(nf_conntrack_nat_mode);
 +
 +       if (!mode || dir != IP_CT_DIR_ORIGINAL ||
++           (nf_ct_protonum(ct) == IPPROTO_TCP &&
++            !READ_ONCE(nf_ct_net(ct)->ct.sysctl_nat_tcp)) ||
 +           help->expecting[NF_CT_EXPECT_CLASS_DEFAULT])
 +               return NF_ACCEPT;
 +
@@ -134,11 +220,11 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +
 +       nf_ct_expect_init(exp, NF_CT_EXPECT_CLASS_DEFAULT, AF_INET,
 +                         mode == 1 ? &ct->tuplehash[dir].tuple.dst.u3 : NULL,
-+                         &ct->tuplehash[!dir].tuple.dst.u3, IPPROTO_UDP,
-+                         NULL, &ct->tuplehash[!dir].tuple.dst.u.udp.port);
++                         &ct->tuplehash[!dir].tuple.dst.u3, nf_ct_protonum(ct),
++                         NULL, &ct->tuplehash[!dir].tuple.dst.u.all);
 +       exp->flags = NF_CT_EXPECT_PERMANENT;
 +       exp->saved_addr = ct->tuplehash[dir].tuple.src.u3;
-+       exp->saved_proto.udp.port = ct->tuplehash[dir].tuple.src.u.udp.port;
++       exp->saved_proto.all = ct->tuplehash[dir].tuple.src.u.all;
 +       exp->dir = !dir;
 +       exp->expectfn = bcm_nat_expect;
 +
@@ -167,6 +253,16 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +       .help = bcm_nat_help,
 +};
 +
++static struct nf_conntrack_helper nf_conntrack_helper_bcm_nat_tcp __read_mostly = {
++       .name = "BCM-NAT-TCP",
++       .me = THIS_MODULE,
++       .tuple.src.l3num = AF_INET,
++       .tuple.dst.protonum = IPPROTO_TCP,
++       .expect_policy = &bcm_nat_exp_policy,
++       .expect_class_max = 1,
++       .help = bcm_nat_help,
++};
++
 +/****************************************************************************/
 +static inline int find_exp(__be32 ip, __be16 port, struct nf_conn *ct)
 +{
@@ -182,9 +278,9 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +                       if (nf_ct_net(i->master) == nf_ct_net(ct) &&
 +                           nf_ct_zone_equal(i->master, nf_ct_zone(ct),
 +                                            IP_CT_DIR_ORIGINAL) &&
-+                           i->tuple.dst.protonum == IPPROTO_UDP &&
++                           i->tuple.dst.protonum == nf_ct_protonum(ct) &&
 +                           i->tuple.dst.u3.ip == ip &&
-+                           i->tuple.dst.u.udp.port == port) {
++                           i->tuple.dst.u.all == port) {
 +                               found = true;
 +                               break;
 +                       }
@@ -215,7 +311,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +                           i->saved_proto.all == tp->src.u.all &&
 +                           i->tuple.dst.protonum == tp->dst.protonum &&
 +                           i->expectfn == bcm_nat_expect &&
-+                           i->tuple.src.u.udp.port == 0) {
++                           i->tuple.src.u.all == 0) {
 +                               exp = i;
 +                               break;
 +                       }
@@ -229,7 +325,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
  unsigned int
  nf_nat_masquerade_ipv4(struct sk_buff *skb, unsigned int hooknum,
  		       const struct nf_nat_range2 *range,
-@@ -60,6 +200,76 @@
+@@ -60,6 +212,81 @@
  	nat = nf_ct_nat_ext_add(ct);
  	if (nat)
  		nat->masq_index = out->ifindex;
@@ -240,7 +336,9 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +#define CHECK_PORT_PARITY(a, b) ((a%2)==(b%2))
 +       if (nf_conntrack_nat_mode != 0 /* nat_mode == full cone */
 +           && (nfct_help(ct) == NULL || nfct_help(ct)->helper == NULL)
-+           && nf_ct_protonum(ct) == IPPROTO_UDP) {
++           && (nf_ct_protonum(ct) == IPPROTO_UDP ||
++               (nf_ct_protonum(ct) == IPPROTO_TCP && skb->skb_iif &&
++                READ_ONCE(nf_ct_net(ct)->ct.sysctl_nat_tcp)))) {
 +               unsigned int ret;
 +               u_int16_t minport;
 +               u_int16_t maxport;
@@ -253,7 +351,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +               /* Look for existing expectation */
 +               exp = find_fullcone_exp(ct, newsrc);
 +               if (exp) {
-+                       minport = maxport = exp->tuple.dst.u.udp.port;
++                       minport = maxport = exp->tuple.dst.u.all;
 +                       pr_debug("bcm_nat: existing mapped port = %hu\n",
 +                                ntohs(minport));
 +               } else { /* no previous expect */
@@ -288,7 +386,7 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +               newrange.flags = range->flags | NF_NAT_RANGE_MAP_IPS |
 +                       NF_NAT_RANGE_PROTO_SPECIFIED;
 +               newrange.max_addr.ip = newrange.min_addr.ip = newsrc;
-+               newrange.min_proto.udp.port = newrange.max_proto.udp.port = minport;
++               newrange.min_proto.all = newrange.max_proto.all = minport;
 +
 +               /* Set ct helper */
 +               ret = nf_nat_setup_info(ct, &newrange, NF_NAT_MANIP_SRC);
@@ -297,7 +395,10 @@ diff --git a/net/netfilter/nf_nat_masquerade.c b/net/netfilter/nf_nat_masquerade
 +                       if (help == NULL)
 +                               help = nf_ct_helper_ext_add(ct, GFP_ATOMIC);
 +                       if (help != NULL) {
-+                               rcu_assign_pointer(help->helper, &nf_conntrack_helper_bcm_nat);
++                               rcu_assign_pointer(help->helper,
++                                   nf_ct_protonum(ct) == IPPROTO_TCP ?
++                                   &nf_conntrack_helper_bcm_nat_tcp :
++                                   &nf_conntrack_helper_bcm_nat);
 +                               pr_debug("bcm_nat: helper set\n");
 +                       }
 +               }

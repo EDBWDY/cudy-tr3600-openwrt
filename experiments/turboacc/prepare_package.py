@@ -25,6 +25,7 @@ def prepare(destination):
             target=destination/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(source.read())
     for source,path in [
         ('turboacc-control','root/usr/libexec/turboacc-control'),
+        ('turboacc-ui','root/usr/libexec/turboacc-ui'),
         ('turboacc-wed','root/usr/libexec/turboacc-wed'),
         ('turboacc.rpc','root/usr/libexec/rpcd/luci.turboacc'),
         ('turboacc.init','root/etc/init.d/turboacc'),
@@ -57,6 +58,9 @@ def prepare(destination):
     text=text.replace(old_description,description)
     text=text.replace("_('Full Cone NAT')","_('UDP NAT mode')").replace("_('Full cone NAT')","_('UDP NAT mode')")
     frontend.write_text(text)
+    # Reuse the original TR3600 card design; keep one actual TurboACC backend.
+    shutil.copyfile(HERE/'turboacc_cards.js',frontend)
+    shutil.copyfile(HERE/'turboacc_cards.css',destination/'htdocs/luci-static/resources/turboacc_cards_v2.css')
     translations={
         'Network acceleration':'网络加速',
         'Netfilter flow offload':'Netfilter 软件流量分载',
@@ -94,7 +98,8 @@ def prepare(destination):
     target.write_text("config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '1'\n option fullcone '0'\n option fullcone_protocol 'udp'\n option wed_enable '0'\n option tcpcca 'cubic'\n")
     acl=destination/'root/usr/share/rpcd/acl.d/luci-app-turboacc.json'
     values=json.loads(acl.read_text())
-    values['luci-app-turboacc']['read']['ubus']['luci.turboacc'].append('getWedStat')
+    values['luci-app-turboacc']['read']['ubus']['luci.turboacc'].extend(['getWedStat','getUiStatus'])
+    values['luci-app-turboacc'].setdefault('write',{}).setdefault('ubus',{}).setdefault('luci.turboacc',[]).append('saveUiSettings')
     acl.write_text(json.dumps(values,indent=2)+'\n')
     menu=destination/'root/usr/share/luci/menu.d/luci-app-turboacc.json'
     values=json.loads(menu.read_text());values['admin/network/turboacc']['title']='Network acceleration'

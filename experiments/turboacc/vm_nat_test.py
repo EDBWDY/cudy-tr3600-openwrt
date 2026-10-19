@@ -39,7 +39,7 @@ def server():
             connection, _ = listener.accept()
             def echo(sock):
                 try:
-                    while data := sock.recv(65536): sock.sendall(data)
+                    while data := sock.recv(65536): sock.sendall(json.dumps(sock.getpeername()).encode() if data == b'?mapping?' else data)
                 finally: sock.close()
             threading.Thread(target=echo, args=(connection,), daemon=True).start()
     for address in ['198.51.100.2', '198.51.100.3']:
@@ -81,8 +81,60 @@ def tcp_client():
             time.sleep(0.02)
 
 
-def configuration(fullcone=0, hardware=0, cca='cubic', protocol='udp'):
-    Path('/etc/config/turboacc').write_text(f"config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '{hardware}'\n option fullcone '{fullcone}'\n option fullcone_protocol '{protocol}'\n option tcpcca '{cca}'\n")
+def tcp_cone_client(port, source):
+    listener = socket.socket()
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    listener.bind((source, port)); listener.listen(); listener.settimeout(2)
+    outgoing = socket.socket()
+    outgoing.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    outgoing.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    outgoing.bind((source, port)); outgoing.settimeout(2)
+    outgoing.connect(('198.51.100.2', 8080))
+    outgoing.sendall(b'?mapping?')
+    print(json.dumps({'mapping': json.loads(outgoing.recv(1024))}), flush=True)
+    for line in sys.stdin:
+        command = json.loads(line)
+        if command['action'] == 'receive':
+            try:
+                connection, peer = listener.accept()
+                with connection:
+                    connection.settimeout(2)
+                    message = connection.recv(1024)
+                    connection.sendall(message)
+                    reached = message == command['token'].encode()
+            except socket.timeout: reached = False
+            print(json.dumps({'reached': reached}), flush=True)
+    outgoing.close(); listener.close()
+
+
+class TCPProbe:
+    def __init__(self, port, source='192.0.2.2'):
+        self.child = subprocess.Popen(['ip','netns','exec','client',sys.executable,__file__,'tcp-cone-client',str(port),source], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.mapping = json.loads(self.child.stdout.readline())['mapping']
+        self.sequence = 0
+    def receive_from(self, address='198.51.100.4'):
+        self.sequence += 1; token = 'tcp-cone-' + str(self.sequence)
+        self.child.stdin.write(json.dumps({'action':'receive','token':token})+'\n'); self.child.stdin.flush()
+        sender = '''import socket,json
+s=socket.socket();s.settimeout(1.5);s.bind((%r,0))
+try:
+ s.connect((%r,%d));s.sendall(%r);reached=s.recv(1024)==%r
+except (OSError,socket.timeout): reached=False
+print(json.dumps({'reached':reached}))
+''' % (address,self.mapping[0],self.mapping[1],token.encode(),token.encode())
+        external = json.loads(run('ip','netns','exec','external',sys.executable,'-c',sender).stdout)['reached']
+        internal = json.loads(self.child.stdout.readline())['reached']
+        assert external == internal
+        print('TURBOACC_TCP_PACKET_RESULT='+json.dumps({'mapping':self.mapping,'sender':address,'reached':internal}),flush=True)
+        return internal
+    def __enter__(self): return self
+    def __exit__(self,*_):
+        self.child.stdin.close(); self.child.wait(timeout=5); assert self.child.returncode == 0
+
+
+def configuration(fullcone=0, hardware=0, cca='cubic', protocol='udp', tcp=False):
+    Path('/etc/config/turboacc').write_text(f"config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '{hardware}'\n option fullcone '{fullcone}'\n option fullcone_protocol '{protocol}'\n option fullcone_tcp '{int(tcp)}'\n option tcpcca '{cca}'\n")
 
 
 def apply():
@@ -161,7 +213,7 @@ def main():
     results['apply_real_fw4_and_tcpcca']=True
     rpc='/usr/libexec/rpcd/luci.turboacc'
     methods=json.loads(run(rpc,'list').stdout)
-    assert {'getSystemFeatures','getFastPathStat','getFullConeStat','getTCPCCAStat','getMTKPPEStat','getWedStat'} == set(methods)
+    assert {'getSystemFeatures','getFastPathStat','getFullConeStat','getTCPCCAStat','getMTKPPEStat','getWedStat','getUiStatus','saveUiSettings'} == set(methods)
     wed=json.loads(run(rpc,'call','getWedStat').stdout)
     assert wed['supported'] is False and wed['attached'] is False and wed['health']=='unavailable'
     results['wed_diagnostics_does_not_claim_nonexistent_hardware']=True
@@ -256,6 +308,34 @@ def main():
     assert Path('/etc/config/firewall').read_bytes()==original
     run('uci','revert','firewall')
     results['unrelated_pending_firewall_changes_preserved']=True
+    assert Path('/proc/sys/net/netfilter/nf_conntrack_nat_tcp').read_text().strip() == '0'
+    # Full cone remains UDP-only until TCP is explicitly opted in.
+    configuration(2,0,tcp=False);apply()
+    with TCPProbe(42000) as tcp_probe: assert not tcp_probe.receive_from()
+    results['udp_fullcone_does_not_enable_tcp_cone']=True
+    configuration(1,0,tcp=True);apply()
+    with TCPProbe(42002) as tcp_probe:
+        assert not tcp_probe.receive_from()
+        assert tcp_probe.receive_from('198.51.100.2')
+        with TCPProbe(42002,'192.0.2.3') as other:
+            assert other.mapping != tcp_probe.mapping
+            assert other.receive_from('198.51.100.2')
+    results['restricted_tcp_handshake_data_and_collision_isolation']=True
+    configuration(2,0,tcp=True);apply()
+    with TCPProbe(42004) as tcp_probe:
+        assert tcp_probe.receive_from()
+        configuration(1,0,tcp=True);apply()
+        assert not tcp_probe.receive_from()
+        assert not tcp_probe.receive_from('198.51.100.2')
+    results['tcp_full_to_restricted_clears_old_wildcard_expectations']=True
+    configuration(2,0,tcp=True);apply()
+    with TCPProbe(42006) as tcp_probe:
+        assert tcp_probe.receive_from()
+        configuration(2,0,tcp=False);apply()
+        assert not tcp_probe.receive_from()
+        assert not tcp_probe.receive_from('198.51.100.2')
+    assert client.poll() is None
+    results['tcp_opt_out_restores_default_without_killing_ordinary_tcp']=True
     configuration(0,0);apply()
     with UDPProbe(41006) as probe:assert not probe.receive_from()
     assert 'System default' in json.loads(run(rpc,'call','getFullConeStat').stdout)['type']
@@ -276,6 +356,7 @@ if len(sys.argv)>1:
     if sys.argv[1]=='server':server()
     elif sys.argv[1]=='udp-client':udp_client(int(sys.argv[2]),sys.argv[3])
     elif sys.argv[1]=='tcp-client':tcp_client()
+    elif sys.argv[1]=='tcp-cone-client':tcp_cone_client(int(sys.argv[2]),sys.argv[3])
 else:
     try:main()
     except Exception:

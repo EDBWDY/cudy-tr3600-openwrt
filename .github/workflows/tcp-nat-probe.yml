@@ -1,0 +1,29 @@
+name: Isolated TCP NAT packet validation
+on:
+  workflow_dispatch:
+  push:
+    branches: [network-acceleration-tcp]
+    paths: ['experiments/turboacc/**', '.github/workflows/tcp-nat-probe.yml']
+permissions:
+  contents: read
+concurrency:
+  group: tr3600-tcp-nat-probe
+  cancel-in-progress: false
+jobs:
+  packet-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Review public sources and card interactions
+        run: |
+          python3 scripts/public_source_audit.py
+          node experiments/turboacc/test_cards.cjs
+      - name: Install isolated VM prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential flex bison libelf-dev libssl-dev bc zstd cpio qemu-system-x86
+      - name: Compile pinned test kernel and validate actual TCP and UDP packets
+        run: python3 -u experiments/turboacc/runtime_probe.py

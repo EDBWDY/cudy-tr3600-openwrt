@@ -6,8 +6,10 @@ read_status() { state=$(/usr/libexec/turboacc-control status); }
 field() { printf '%s' "$state" | jsonfilter -e "@.$1"; }
 case "${1:-}:${2:-}" in
 list:)
-    printf '%s\n' '{"getSystemFeatures":{},"getFastPathStat":{},"getFullConeStat":{},"getTCPCCAStat":{},"getMTKPPEStat":{},"getWedStat":{}}'
+    printf '%s\n' '{"getSystemFeatures":{},"getFastPathStat":{},"getFullConeStat":{},"getTCPCCAStat":{},"getMTKPPEStat":{},"getWedStat":{},"getUiStatus":{},"saveUiSettings":{"software":true,"hardware":true,"wed":true,"nat":"0","nat_tcp":true,"cca":"cubic","risk_confirmed":true}}'
     ;;
+call:getUiStatus) /usr/libexec/turboacc-ui status;;
+call:saveUiSettings) /usr/libexec/turboacc-ui save;;
 call:getSystemFeatures)
     flow=false
     if [ -x /sbin/fw4 ] && [ -x /usr/sbin/nft ]; then flow=true; fi

@@ -1,0 +1,93 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# RPC adapter for the original card UI. All writes use the real controller.
+set -eu
+set +u
+. /usr/share/libubox/jshn.sh
+get() { uci -q get "$1" 2>/dev/null || printf '%s' "$2"; }
+error() { json_init; json_add_boolean ok 0; json_add_string message "$1"; json_dump; exit 1; }
+status() {
+    state=$(/usr/libexec/turboacc-control status) || error '无法读取网络加速后端'
+    json_load "$state"
+    json_get_vars software_rules_active hardware_rules_active ppe_bound_connections
+    sw=$software_rules_active; hw=$hardware_rules_active; bindings=$ppe_bound_connections
+    wed=$(/usr/libexec/turboacc-wed status) || error '无法读取 WED 状态'
+    json_load "$wed"
+    json_get_vars supported attached reboot_pending health log apply_error
+    wed_supported=$supported; wed_attached=$attached; pending=$reboot_pending
+    json_init
+    json_add_boolean ok 1
+    json_add_object configured
+    configured_sw=0; [ "$(get turboacc.config.fastpath disabled)" != flow_offloading ] || configured_sw=1
+    json_add_boolean software "$configured_sw"
+    json_add_boolean hardware "$(get turboacc.config.fastpath_fo_hw 0)"
+    json_add_boolean wed "$(get turboacc.config.wed_enable 0)"
+    json_add_string nat "$(get turboacc.config.fullcone 0)"
+    json_add_boolean nat_tcp "$(get turboacc.config.fullcone_tcp 0)"
+    json_add_string cca "$(get turboacc.config.tcpcca cubic)"
+    json_close_object
+    json_add_object runtime
+    json_add_boolean software "$sw"; json_add_boolean hardware "$hw"; json_add_boolean wed "$wed_attached"
+    json_close_object
+    json_add_object supported
+    flow=0; [ ! -x /sbin/fw4 ] || flow=1
+    ppe=0; [ ! -d /sys/kernel/debug/ppe0 ] || ppe=1
+    nat=0; [ ! -w /proc/sys/net/netfilter/nf_conntrack_nat_mode ] || nat=1
+    tcp=0; [ ! -w /proc/sys/net/netfilter/nf_conntrack_nat_tcp ] || tcp=1
+    json_add_boolean software "$flow"; json_add_boolean hardware "$ppe"; json_add_boolean wed "$wed_supported"
+    json_add_boolean nat "$nat"; json_add_boolean nat_tcp "$tcp"
+    json_close_object
+    json_add_array algorithms
+    for name in $(cat /proc/sys/net/ipv4/tcp_available_congestion_control); do json_add_string '' "$name"; done
+    json_close_array
+    json_add_int bindings "$bindings"
+    json_add_boolean wed_pending "$pending"
+    json_add_object wed_diagnostic
+    json_add_string state "$health"; json_add_string logs "$log"; json_add_boolean logs_available 1
+    json_close_object
+    json_add_string apply_error "$apply_error"
+    clash=$(get openclash.config.enable 0); json_add_boolean clash_enabled "$clash"
+    json_dump
+}
+save() {
+    IFS= read -r payload || error '缺少设置参数'
+    [ ${#payload} -le 4096 ] || error '设置参数过长'
+    json_load "$payload" || error '设置参数格式错误'
+    for name in software hardware wed nat_tcp risk_confirmed; do
+        json_get_type type "$name"; [ "$type" = boolean ] || error '开关参数必须是布尔值'
+        json_get_var value "$name"; eval "$name=\$value"
+    done
+    json_get_var nat nat; json_get_var cca cca
+    case "$nat" in 0|1|2) :;; *) error '无效的 NAT 模式';; esac
+    case "$cca" in ''|*[!a-zA-Z0-9_]*) error '无效的拥塞算法';; esac
+    grep -qw "$cca" /proc/sys/net/ipv4/tcp_available_congestion_control || error '当前内核未提供所选拥塞算法'
+    if [ "$nat_tcp" = 1 ] && [ ! -w /proc/sys/net/netfilter/nf_conntrack_nat_tcp ]; then error '当前内核未提供 TCP 锥形 NAT 后端'; fi
+    if [ "$hardware" = 1 ] && [ "$software" != 1 ]; then error '硬件流量分载需要软件流量分载'; fi
+    if [ "$nat" != 0 ] && { [ "$nat" != "$(get turboacc.config.fullcone 0)" ] || [ "$nat_tcp" != "$(get turboacc.config.fullcone_tcp 0)" ]; } && [ "$risk_confirmed" != 1 ]; then error '启用锥形 NAT 前必须确认安全风险'; fi
+    [ -z "$(uci -q changes turboacc)" ] || error '请先保存或撤销其他网络加速改动'
+    mkdir -p /var/lock
+    mkdir /var/lock/turboacc-ui 2>/dev/null || error '另一项网络加速设置正在应用'
+    backup=$(mktemp /tmp/turboacc-ui.XXXXXX)
+    cp -p /etc/config/turboacc "$backup"
+    committed=0
+    cleanup() {
+        if [ "$committed" != 1 ]; then uci -q revert turboacc; cp -p "$backup" /etc/config/turboacc; fi
+        rm -f "$backup"; rmdir /var/lock/turboacc-ui
+    }
+    trap cleanup EXIT
+    fp=disabled; [ "$software" != 1 ] || fp=flow_offloading
+    uci set "turboacc.config.fastpath=$fp"
+    uci set "turboacc.config.fastpath_fo_hw=$hardware"
+    uci set "turboacc.config.wed_enable=$wed"
+    uci set "turboacc.config.fullcone=$nat"
+    uci set "turboacc.config.fullcone_tcp=$nat_tcp"
+    uci set 'turboacc.config.fullcone_protocol=udp'
+    uci set "turboacc.config.tcpcca=$cca"
+    if ! /usr/libexec/turboacc-control apply >/tmp/turboacc-ui-result 2>&1; then
+        error "$(tail -c 4096 /tmp/turboacc-last-error 2>/dev/null || cat /tmp/turboacc-ui-result)"
+    fi
+    uci commit turboacc
+    committed=1
+    status
+}
+case "${1:-status}" in status) status;; save) save;; *) error '未知的界面操作';; esac
