@@ -36,7 +36,8 @@ already-contacted external IP may send from a different source port), and
 The two cone modes apply to IPv4 UDP, with optional IPv4 TCP support controlled
 by `fullcone_tcp`. The base `fullcone_protocol` remains `udp`; setting it to
 `tcp` is rejected, so UDP-only configurations keep their original semantics.
-TCP is offered only when `/proc/sys/net/netfilter/nf_conntrack_nat_tcp` exists.
+The deployed card UI exposes UDP NAT only and always leaves the TCP opt-in
+off. The experimental TCP backend is not exposed as a disabled UI option.
 
 Cone support is compiled in but defaults to disabled in both the kernel and
 the package configuration. Selecting a cone mode in LuCI opens a security
