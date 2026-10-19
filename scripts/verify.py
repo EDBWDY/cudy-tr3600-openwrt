@@ -122,7 +122,13 @@ def installed_luci_javascript(source):
         # Match the pinned luci.mk JsMin transformation, using the exact host
         # tool preserved in this compiler checkpoint. Never weaken this to a
         # substring/whitespace comparison, which could hide modified code.
-        tool = SRC / 'staging_dir/host/bin/jsmin'
+        # LuCI's host package installs this in hostpkg; tools built by OpenWrt's
+        # tools stage use host. Resolve only within the authenticated checkpoint.
+        candidates = [SRC / 'staging_dir' / directory / 'bin/jsmin'
+                      for directory in ('hostpkg', 'host')]
+        tool = next((path for path in candidates if path.is_file()), None)
+        if tool is None:
+            raise RuntimeError('Preserved LuCI jsmin host tool missing: ' + str(candidates))
         data = subprocess.run([str(tool)], input=data, capture_output=True, check=True).stdout
     return data
 
