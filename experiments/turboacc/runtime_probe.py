@@ -28,4 +28,10 @@ with tempfile.TemporaryDirectory(prefix='tcp-nat-vm-',dir=os.environ.get('RUNNER
     archive=download(lock['kernel']['url'],build/'linux.tar.xz')
     with archive.open('rb') as source: digest=hashlib.file_digest(source,'sha256').hexdigest()
     if digest != lock['kernel']['sha256']: raise RuntimeError('Pinned kernel hash mismatch')
-    verify_runtime(build,download,run)
+    try:
+        verify_runtime(build,download,run)
+    finally:
+        # apk creates root-owned private directories inside the disposable
+        # rootfs. Restore ownership without following its absolute symlinks,
+        # so temporary-directory cleanup cannot turn passed tests red.
+        subprocess.run(['sudo','chown','-Rh',f'{os.getuid()}:{os.getgid()}',str(build)],check=True)

@@ -23,6 +23,15 @@ class CheckpointIdentityTests(unittest.TestCase):
     def test_matching_inputs_can_resume(self):
         validate_metadata(self.metadata, self.root)
 
+    def test_acceleration_cards_and_adapter_are_compiled_inputs(self):
+        for name in ['turboacc-ui', 'turboacc_cards.js', 'turboacc_cards.css']:
+            path = self.root / 'experiments/turboacc' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('first')
+            original = recipe(self.root)
+            path.write_text('changed')
+            self.assertNotEqual(original, recipe(self.root), name)
+
     def test_changed_plugin_cannot_silently_reuse_old_tree(self):
         (self.root / 'package/fan/files/view.js').write_text('changed', encoding='utf-8')
         with self.assertRaises(RuntimeError):

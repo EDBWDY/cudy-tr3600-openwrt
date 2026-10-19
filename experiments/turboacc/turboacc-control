@@ -48,7 +48,7 @@ apply() {
     case "$fp" in disabled) software=0; hardware=0;; flow_offloading) software=1;; *) fail 'Unsupported fastpath engine for this backend';; esac
     case "$hardware" in 0|1) :;; *) fail 'Invalid hardware offload value';; esac
     case "$fullcone" in 0|1|2) :;; *) fail 'Invalid cone NAT value';; esac
-    [ "$protocol" = udp ] || fail 'Cone NAT is supported for IPv4 UDP only; TCP and other protocols keep default NAT'
+    [ "$protocol" = udp ] || fail 'Base cone NAT protocol must be UDP; TCP requires its separate opt-in setting'
     case "$nat_tcp" in 0|1) :;; *) fail 'Invalid TCP cone NAT value';; esac
     if [ "$nat_tcp" = 1 ] && [ ! -w "$NAT_TCP" ]; then fail 'TCP cone NAT kernel backend is unavailable'; fi
     target_tcp=$nat_tcp; [ "$fullcone" != 0 ] || target_tcp=0

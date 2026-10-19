@@ -35,7 +35,8 @@ def recipe(root):
                        'refresh_customizations.py', 'refresh_target.py', 'public_source_audit.py'}
     experiment_build = {'sources.json', 'prepare_package.py', 'integrate_openwrt.py',
                         'turboacc-control', 'turboacc.rpc', 'turboacc.init',
-                        'turboacc_safety.js', 'turboacc_wed.js', 'turboacc-wed'}
+                        'turboacc_safety.js', 'turboacc_wed.js', 'turboacc-wed',
+                        'turboacc-ui', 'turboacc_cards.js', 'turboacc_cards.css'}
     for name in ('patches', 'package', 'files', 'scripts', 'experiments/turboacc'):
         paths.extend(path for path in (root / name).rglob('*')
                      if path.is_file() and '__pycache__' not in path.parts

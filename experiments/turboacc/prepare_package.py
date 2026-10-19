@@ -60,6 +60,7 @@ def prepare(destination):
     frontend.write_text(text)
     # Reuse the original TR3600 card design; keep one actual TurboACC backend.
     shutil.copyfile(HERE/'turboacc_cards.js',frontend)
+    shutil.copyfile(HERE/'turboacc_cards.js',destination/'htdocs/luci-static/resources/view/turboacc_cards_v2.js')
     shutil.copyfile(HERE/'turboacc_cards.css',destination/'htdocs/luci-static/resources/turboacc_cards_v2.css')
     translations={
         'Network acceleration':'网络加速',
@@ -95,7 +96,7 @@ def prepare(destination):
             for original,translation in translations.items():
                 output.write('\nmsgid '+json.dumps(original,ensure_ascii=False)+'\nmsgstr '+json.dumps(translation if translated else '',ensure_ascii=False)+'\n')
     target=destination/'root/etc/config/turboacc';target.parent.mkdir(parents=True,exist_ok=True)
-    target.write_text("config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '1'\n option fullcone '0'\n option fullcone_protocol 'udp'\n option wed_enable '0'\n option tcpcca 'cubic'\n")
+    target.write_text("config turboacc 'config'\n option fastpath 'flow_offloading'\n option fastpath_fo_hw '1'\n option fullcone '0'\n option fullcone_protocol 'udp'\n option fullcone_tcp '0'\n option wed_enable '0'\n option tcpcca 'cubic'\n")
     acl=destination/'root/usr/share/rpcd/acl.d/luci-app-turboacc.json'
     values=json.loads(acl.read_text())
     values['luci-app-turboacc']['read']['ubus']['luci.turboacc'].extend(['getWedStat','getUiStatus'])
@@ -103,6 +104,7 @@ def prepare(destination):
     acl.write_text(json.dumps(values,indent=2)+'\n')
     menu=destination/'root/usr/share/luci/menu.d/luci-app-turboacc.json'
     values=json.loads(menu.read_text());values['admin/network/turboacc']['title']='Network acceleration'
+    values['admin/network/turboacc']['action']['path']='turboacc_cards_v2'
     menu.write_text(json.dumps(values,indent=2)+'\n')
     (destination/'Makefile').write_text('''# SPDX-License-Identifier: GPL-3.0-only
 # Frontend: Copyright (C) 2018 Lean; Copyright (C) 2019-2022 ImmortalWrt.org

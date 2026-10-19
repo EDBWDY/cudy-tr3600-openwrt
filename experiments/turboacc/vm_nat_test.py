@@ -222,6 +222,18 @@ def main():
     assert 'Netfilter' in json.loads(run(rpc,'call','getFastPathStat').stdout)['type']
     assert json.loads(run(rpc,'call','getMTKPPEStat').stdout)=={'PPE_NUM':0}
     results['original_turboacc_rpc_contract_reports_real_backend_state']=True
+    ui_state=json.loads(run(rpc,'call','getUiStatus').stdout)
+    assert ui_state['ok'] and ui_state['supported']['nat_tcp'] and not ui_state['supported']['hardware']
+    assert ui_state['configured']['nat']=='0' and ui_state['configured']['cca']=='reno'
+    request={'software':True,'hardware':False,'wed':False,'nat':'2','nat_tcp':True,'cca':'cubic','risk_confirmed':False}
+    rejected=subprocess.run([rpc,'call','saveUiSettings'],input=json.dumps(request)+'\n',text=True,capture_output=True)
+    assert rejected.returncode and json.loads(rejected.stdout)['ok'] is False
+    assert json.loads(run('/usr/libexec/turboacc-control','status').stdout)['fullcone_mode']==0
+    request.update(nat='0',nat_tcp=False,cca='reno')
+    saved=subprocess.run([rpc,'call','saveUiSettings'],input=json.dumps(request)+'\n',text=True,capture_output=True)
+    assert saved.returncode==0,(saved.stdout,saved.stderr)
+    assert json.loads(saved.stdout)['configured']['cca']=='reno'
+    results['card_rpc_reads_real_state_rejects_unconfirmed_risk_and_saves_through_controller']=True
     with UDPProbe(41000) as probe:assert not probe.receive_from()
     results['ordinary_nat_blocks_unknown_udp_peer']=True
 

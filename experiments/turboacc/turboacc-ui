@@ -54,7 +54,8 @@ save() {
     [ ${#payload} -le 4096 ] || error '设置参数过长'
     json_load "$payload" || error '设置参数格式错误'
     for name in software hardware wed nat_tcp risk_confirmed; do
-        json_get_type type "$name"; [ "$type" = boolean ] || error '开关参数必须是布尔值'
+        json_get_type type "$name" || error '缺少开关参数'
+        [ "$type" = boolean ] || error '开关参数必须是布尔值'
         json_get_var value "$name"; eval "$name=\$value"
     done
     json_get_var nat nat; json_get_var cca cca
