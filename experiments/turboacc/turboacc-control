@@ -120,6 +120,8 @@ apply() {
         /usr/libexec/turboacc-wed apply >>"$ERROR" 2>&1 || fail 'Saving the WED boot parameter failed'
     fi
     rollback=0
+    # Keep successful diagnostics without presenting warnings as apply errors.
+    mv "$ERROR" /tmp/turboacc-last-apply.log
     status
 }
 
