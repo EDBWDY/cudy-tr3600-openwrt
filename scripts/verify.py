@@ -116,6 +116,17 @@ for package in ['luci-app-tr3600-usb', 'luci-app-tr3600-fan', 'luci-app-tr3600-c
         if file.is_file() and (rootfs / file.relative_to(source_files)).read_bytes() != file.read_bytes():
             raise RuntimeError('Installed custom plugin differs from current source: ' + str(file))
 # Verify the new controller, guarded NAT choices and matched port provenance.
+def installed_luci_javascript(source):
+    data = source.read_bytes()
+    if 'CONFIG_LUCI_JSMIN=y' in (SRC / '.config').read_text().splitlines():
+        # Match the pinned luci.mk JsMin transformation, using the exact host
+        # tool preserved in this compiler checkpoint. Never weaken this to a
+        # substring/whitespace comparison, which could hide modified code.
+        tool = SRC / 'staging_dir/host/bin/jsmin'
+        data = subprocess.run([str(tool)], input=data, capture_output=True, check=True).stdout
+    return data
+
+
 for name, relative in {
     'turboacc-control':'usr/libexec/turboacc-control',
     'turboacc-wed':'usr/libexec/turboacc-wed',
@@ -123,8 +134,13 @@ for name, relative in {
     'turboacc_safety.js':'www/luci-static/resources/turboacc_safety.js',
     'turboacc_wed.js':'www/luci-static/resources/turboacc_wed.js',
 }.items():
-    if (rootfs / relative).read_bytes() != (ROOT / 'experiments/turboacc' / name).read_bytes():
+    original = ROOT / 'experiments/turboacc' / name
+    expected = installed_luci_javascript(original) if original.suffix == '.js' else original.read_bytes()
+    if (rootfs / relative).read_bytes() != expected:
         raise RuntimeError('TurboACC installed source differs: ' + name)
+frontend = SRC / 'package/custom/luci-app-turboacc-mtk/htdocs/luci-static/resources/view/turboacc.js'
+if (rootfs / 'www/luci-static/resources/view/turboacc.js').read_bytes() != installed_luci_javascript(frontend):
+    raise RuntimeError('TurboACC installed frontend differs from its pinned build input')
 if (rootfs / 'usr/share/luci/menu.d/luci-app-tr3600-acceleration.json').exists():
     raise RuntimeError('Obsolete acceleration controller must not coexist with TurboACC')
 cone = (rootfs / 'etc/config/turboacc').read_text()

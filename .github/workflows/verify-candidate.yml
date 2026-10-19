@@ -51,12 +51,16 @@ jobs:
         id: image
         continue-on-error: true
         run: |
+          set -euo pipefail
           mkdir -p validation-reports
           python3 -u scripts/verify.py 2>&1 | tee validation-reports/image-validation.log
+          test -s artifacts/verification.json
+          test -s artifacts/privacy-verification.json
       - name: Run source regression checks independently of compiler and image preservation
         id: regressions
         continue-on-error: true
         run: |
+          set -euo pipefail
           mkdir -p validation-reports
           python3 -m unittest discover -s scripts -p 'test_*.py' 2>&1 | tee validation-reports/source-tests.log
       - name: Preserve validation reports even if a verifier fails
