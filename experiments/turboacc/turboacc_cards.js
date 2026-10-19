@@ -145,7 +145,7 @@ return view.extend({
                 row('software', '软件流量分载', 'Netfilter Flowtable · 由 CPU 通过快速路径转发，减少重复处理'),
                 row('hardware', '硬件流量分载', 'MediaTek PPE · 将符合条件的连接交给硬件转发，支持以太网'),
                 row('wed', '无线加速', 'WED · 配合硬件流量分载加速 Wi-Fi 收发，重启后生效'),
-                selectRow('nat', 'UDP NAT 模式', '仅作用于 IPv4 UDP；TCP 保持默认 NAT。默认保持系统 NAT。受限锥形按来源 IP 限制；全锥形允许任意外部来源访问已有映射。切换会清理旧 UDP 映射。', [['0', '系统默认 NAT'], ['1', '受限锥形 NAT'], ['2', '全锥形 NAT']]),
+                selectRow('nat', 'UDP NAT 模式', '仅适用于 IPv4 UDP。切换模式会重置现有 UDP 连接。', [['0', '系统默认 NAT'], ['1', '受限锥形 NAT'], ['2', '全锥形 NAT']]),
                 selectRow('cca', 'TCP 拥塞控制算法', '用于路由器自身发起或代理终止的 TCP 连接；不改变转发设备自身的 TCP 拥塞算法。', algorithms),
                 this.notes, this.wedFault, this.error,
                 E('div', { 'class': 'acc-actions' }, [this.dirty, E('div', {}, [this.reset, this.apply])])

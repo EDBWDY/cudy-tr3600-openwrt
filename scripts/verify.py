@@ -136,7 +136,7 @@ def installed_luci_javascript(source):
 for name, relative in {
     'turboacc-control':'usr/libexec/turboacc-control',
     'turboacc-ui':'usr/libexec/turboacc-ui',
-    'turboacc_cards.js':'www/luci-static/resources/view/turboacc_cards_v3.js',
+    'turboacc_cards.js':'www/luci-static/resources/view/turboacc_cards_v4.js',
     'turboacc_cards.css':'www/luci-static/resources/turboacc_cards_v3.css',
     'turboacc-wed':'usr/libexec/turboacc-wed',
     'turboacc.rpc':'usr/libexec/rpcd/luci.turboacc',

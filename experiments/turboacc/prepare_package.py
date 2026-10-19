@@ -60,7 +60,7 @@ def prepare(destination):
     frontend.write_text(text)
     # Reuse the original TR3600 card design; keep one actual TurboACC backend.
     shutil.copyfile(HERE/'turboacc_cards.js',frontend)
-    shutil.copyfile(HERE/'turboacc_cards.js',destination/'htdocs/luci-static/resources/view/turboacc_cards_v3.js')
+    shutil.copyfile(HERE/'turboacc_cards.js',destination/'htdocs/luci-static/resources/view/turboacc_cards_v4.js')
     shutil.copyfile(HERE/'turboacc_cards.css',destination/'htdocs/luci-static/resources/turboacc_cards_v3.css')
     translations={
         'Network acceleration':'网络加速',
@@ -104,7 +104,7 @@ def prepare(destination):
     acl.write_text(json.dumps(values,indent=2)+'\n')
     menu=destination/'root/usr/share/luci/menu.d/luci-app-turboacc.json'
     values=json.loads(menu.read_text());values['admin/network/turboacc']['title']='Network acceleration'
-    values['admin/network/turboacc']['action']['path']='turboacc_cards_v3'
+    values['admin/network/turboacc']['action']['path']='turboacc_cards_v4'
     menu.write_text(json.dumps(values,indent=2)+'\n')
     (destination/'Makefile').write_text('''# SPDX-License-Identifier: GPL-3.0-only
 # Frontend: Copyright (C) 2018 Lean; Copyright (C) 2019-2022 ImmortalWrt.org
