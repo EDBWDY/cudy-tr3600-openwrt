@@ -179,20 +179,9 @@ module_names = {path.name for path in (rootfs / 'lib/modules').rglob('*.ko')}
 required_modules = ['usb-storage.ko', 'uas.ko', 'rndis_host.ko', 'cdc_ether.ko', 'cdc_ncm.ko', 'ipheth.ko', 'ntfs3.ko', 'exfat.ko', 'vfat.ko']
 if any(name not in module_names for name in required_modules):
     raise RuntimeError(f'USB/filesystem modules missing: {set(required_modules) - module_names}')
-for path in target.iterdir():
-    if path.is_file() and (path.name.endswith(('.bin', '.manifest', '.buildinfo', '.json')) or path.name == 'sha256sums'):
-        shutil.copyfile(path, OUT / path.name)
-shutil.copyfile(SRC / '.config', OUT / 'config.full')
-shutil.copyfile(ROOT / 'config.seed', OUT / 'config.seed')
-shutil.copyfile(ROOT / 'sources.json', OUT / 'sources.json')
-shutil.copyfile(ROOT / 'patches/cudy-tr3600-v1-fixes.patch', OUT / 'hardware-fixes.patch')
-shutil.copyfile(SRC / 'feeds/packages/lang/rust/Makefile', OUT / 'rust-host.Makefile')
-
-# Archive all built APK/IPK packages, including this image's exact kernel modules.
-with tarfile.open(OUT / 'same-build-packages.tar.gz', 'w:gz') as archive:
-    for base in [SRC / 'bin/packages', target / 'packages']:
-        if base.exists():
-            archive.add(base, arcname=str(base.relative_to(SRC / 'bin')))
+# Compilation already preserved images, matching packages and their hashes via
+# collect-unverified.py. Independent verification produces reports only; never
+# repack or replace those deliverables when repairing or rerunning a verifier.
 verification = {
     'board': 'cudy,tr3600-v1', 'kernel': kernel,
     'required_packages': required, 'required_build_options': build_options,
@@ -203,13 +192,4 @@ verification = {
     'validation': 'Archive, metadata, device manifest, installed plugin/core files and USB modules checked; not yet flashed or runtime tested.'
 }
 (OUT / 'verification.json').write_text(json.dumps(verification, indent=2) + '\n')
-hashes = []
-for path in sorted(OUT.iterdir()):
-    if path.is_file() and path.name != 'artifact-sha256sums':
-        digest = hashlib.sha256()
-        with path.open('rb') as stream:
-            for block in iter(lambda: stream.read(1024 * 1024), b''):
-                digest.update(block)
-        hashes.append(f'{digest.hexdigest()}  {path.name}')
-(OUT / 'artifact-sha256sums').write_text('\n'.join(hashes) + '\n')
 print(json.dumps(verification, indent=2))

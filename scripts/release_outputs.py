@@ -7,6 +7,10 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
+REPORT_NAMES = {
+    'verification.json', 'privacy-verification.json', 'sysupgrade-metadata.json',
+    'validation-status.json', 'image-validation.log', 'source-tests.log',
+}
 
 
 def gh(*args):
@@ -15,6 +19,8 @@ def gh(*args):
 
 def publish(tag, folder, reports=False):
     paths = sorted(p for p in (ROOT / folder).glob('*') if p.is_file())
+    if reports:
+        paths = [p for p in paths if p.name in REPORT_NAMES]
     if not paths:
         print('No output files available in ' + folder)
         return
