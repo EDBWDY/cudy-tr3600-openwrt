@@ -16,9 +16,11 @@ flashes a running router. Build outputs are experimental and are not releases.
   `kmod-mediatek_hnat` driver and is reported as such.
 - The Broadcom-style UDP Full Cone NAT implementation from the pinned
   MT798x tree, adapted to Linux 6.12.94, with an additional address-restricted
-  cone mode. The default is system NAT. TCP and other protocols keep their
-  existing NAT behavior. Non-UDP cone configuration is rejected.
-- The original TurboACC frontend and five RPC methods, connected to actual
+  cone mode. The default is system NAT. TCP requires an additional, disabled
+  by default opt-in and the paired kernel implementation in this branch.
+  IPv6 and other protocols retain their existing NAT behavior.
+- The original TR3600 card frontend, NAT mode and congestion controls, and
+  the TurboACC RPC contract, connected to actual
   kernel/firewall state. Unsupported vendor AP/PPE tuning controls are not
   advertised. A missing PPE or Full Cone backend causes an apply error.
 
@@ -30,19 +32,31 @@ It does not modify LAN, DHCP, Wi-Fi, DNS, or host identity settings.
 
 The three modes are `0` system default NAT, `1` address-restricted cone (an
 already-contacted external IP may send from a different source port), and
-`2` full cone (any external IP/port may use an existing UDP mapping).
-The two cone modes apply only to IPv4 UDP.
+`2` full cone (any external IP/port may use an existing mapping).
+The two cone modes apply to IPv4 UDP, with optional IPv4 TCP support controlled
+by `fullcone_tcp`. The base `fullcone_protocol` remains `udp`; setting it to
+`tcp` is rejected, so UDP-only configurations keep their original semantics.
+TCP is offered only when `/proc/sys/net/netfilter/nf_conntrack_nat_tcp` exists.
 
 Cone support is compiled in but defaults to disabled in both the kernel and
 the package configuration. Selecting a cone mode in LuCI opens a security
-warning specific to that mode. Canceling or dismissing the warning keeps it
-off. Confirmation selects the feature; the normal save-and-apply action is
-still required to activate it.
+warning before applying an enabled mode or changing its TCP scope. Canceling
+keeps the running configuration unchanged; confirmation applies the requested
+settings through the same transactional controller.
 
 Mode changes clear existing IPv4 UDP connection state, including wildcard
 expectations and already-related inbound child flows. UDP applications may
 briefly reconnect. This prevents an old full-cone mapping from staying open
-after selecting restricted or default NAT. TCP/IPv6 state is preserved.
+after selecting restricted or default NAT. UDP-only changes preserve TCP/IPv6.
+When TCP cone NAT is disabled or its mode changes, a kernel setter removes
+only its own helper masters and RELATED children, including their expectations.
+Ordinary TCP sessions and local management connections are preserved. Newly
+created TCP cone mappings are limited to forwarded traffic, not router-local
+outbound connections. The TCP flag is per network namespace and starts at zero.
+
+The card UI preserves pending edits and open dropdowns during polling. It lists
+only congestion algorithms reported by the current kernel. Congestion control
+applies to TCP terminated by the router; it does not replace client TCP stacks.
 
 ## Reproduce
 
@@ -64,7 +78,8 @@ The checks cover:
    OpenWrt UCI, netifd, firewall4 and nftables. Packet fixtures test ordinary
    NAT, restricted/full cone mapping and filtering, two-client port collisions,
    live-socket restoration of default NAT, a TCP connection surviving UDP-only
-   mode changes, software flow offload, configuration rejection, failure
+   mode changes, TCP cone handshakes and payloads, opt-out cleanup, software
+   flow offload, configuration rejection, failure
    rollback and the original RPC contract. A separate test uses the actual
    pinned LuCI class runtime to exercise enable/cancel/dismiss confirmation.
 
@@ -88,6 +103,8 @@ It does not build or deploy firmware by itself.
 Object compilation does not establish a compatible replacement module for
 an existing router kernel. The WED changes alter shared kernel/driver data
 structures. A matched kernel and driver build is required for hardware tests.
+The new TCP flag also changes conntrack namespace layout. Do not hot-swap
+these NAT/conntrack modules into the previously released kernel.
 
 QEMU can exercise NAT and software forwarding, but cannot emulate the TR3600
 PPE/WED hardware. Physical WED attachment, DMA, Wi-Fi forwarding, throughput
@@ -96,10 +113,10 @@ hardware boot. A real hardware test must confirm successful attachment,
 populated WED state and packet counters, PPE-bound flows and stable traffic;
 the enable parameter alone is insufficient.
 
-The original Full Cone implementation uses a conntrack helper. Its UDP flows
-may be excluded from mainline flow offload; simultaneous TCP software offload
-is tested separately. No claim is made that every Full Cone UDP flow is
-hardware accelerated.
+The cone implementation uses conntrack helpers. Its UDP and opt-in TCP flows
+may be excluded from mainline flow offload; simultaneous ordinary TCP software
+offload is tested separately. No claim is made that cone flows are hardware
+accelerated.
 
 The intentionally omitted vendor-only features and affected source files
 are listed in `port-scope.json`. Full production ABI/linking, hardware stability,
