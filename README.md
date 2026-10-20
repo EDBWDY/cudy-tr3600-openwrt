@@ -1,6 +1,6 @@
 # Cudy TR3600 OpenWrt
 
-适用于 **Cudy TR3600 v1 / V1.0（R126）** 的自用 OpenWrt 固件，基于 [hyqhyq3/openwrt-cudy-tr3600](https://github.com/hyqhyq3/openwrt-cudy-tr3600) 制作，补充 USB 驱动、客户端管理和常用插件。
+适用于 **Cudy TR3600 v1 / V1.0（R126）** 的自用 OpenWrt 固件，基于 [hyqhyq3/openwrt-cudy-tr3600](https://github.com/hyqhyq3/openwrt-cudy-tr3600) 制作，加上了网络加速、USB 管理、客户端管理和一些常用插件。
 
 OpenWrt 25.12-SNAPSHOT · Linux 6.12.94 · 中文 LuCI · Argon
 
@@ -10,7 +10,9 @@ OpenWrt 25.12-SNAPSHOT · Linux 6.12.94 · 中文 LuCI · Argon
 
 | 分类 | 内容 |
 | --- | --- |
-| 界面 | 中文 LuCI、Argon 主题、亮色 / 暗黑模式 |
+| 界面 | 中文 LuCI、Argon 主题、亮色 / 暗黑模式，适配手机显示 |
+| 网络加速 | Netfilter 软件分载、MediaTek PPE 硬件分载、WED 无线加速 |
+| NAT | 默认 NAT、受限锥形、全锥形，可选覆盖 TCP |
 | 代理 | OpenClash，内置 Mihomo arm64 内核 |
 | VPN | Tailscale、ZeroTier、WireGuard，配套 LuCI 页面 |
 | DNS | HTTPS DNS Proxy、AdGuard Home 及管理入口；不包含个人配置和查询记录 |
@@ -18,31 +20,17 @@ OpenWrt 25.12-SNAPSHOT · Linux 6.12.94 · 中文 LuCI · Argon
 | 存储驱动 | USB 3.0、UAS、ext4、NTFS3、exFAT、FAT32 |
 | USB 上网 | Android / iPhone 网络共享、Realtek USB 网卡、QMI / MBIM 驱动及工具 |
 
-### 客户端管理
+### 这版加了什么
 
-在「状态 → 客户端管理」查看各设备的 IP、在线状态、连接方式、实时速率和累计流量，支持修改别名、加入黑名单、设置上下行限速。
+网络加速换回了原来的卡片设计，软件分载、硬件分载和 WED 放在一起管理。修复了 WED 开启后 Wi-Fi 无法连接的问题，双频连接和收发已在实机验证。
 
-卡片按设备单列排列，支持搜索，IPv6 地址可展开查看；无线设备标注频段和 BE / AX / AC / N，有线设备显示「有线」。
+NAT 保留系统默认的 MASQUERADE，也可以选受限锥形或全锥形，按需覆盖 TCP；锥形模式默认不开，启用时会提醒风险。TCP 拥塞控制也能在页面里选。
 
-累计流量重启后清零。限速为速率上限控制，不含 SQM；开启流量分载时会提示统计可能不准确，设置限速和黑名单需先关闭流量分载。
+客户端管理可以看设备、流量、连接方式，改别名、拉黑和限速。网络身份用来保存、切换各接口的 MAC 和 DHCP 主机名。USB 管理把硬盘挂载、手机共享和 USB 网卡放在一个页面里，概览也能直接查看 USB 状态。
 
-### USB 管理
+信道分析重新整理了图表，坐标放到图外，补了无线技术和简化的加密信息。顺手修了一批 Argon 排版问题，包括接口列表、挂载点、HTTPS DNS 代理和 Tailscale 的手机显示。
 
-在「系统 → USB 管理」查看已连接的设备、硬盘分区和驱动状态，也可以配置手机或 USB 网卡上网。USB 状态同时显示在状态概览中。
-
-手机开启 USB 共享后，在页面启用 USB 上网即可。有线 WAN 默认优先，USB 作为备用；目前需要手动启用，不支持插线自动配置或上游断网检测。
-
-### 网络加速（新固件候选）
-
-在「网络 → 网络加速」使用移植的 TurboACC 管理真实后端：Netfilter 软件流量分载、MediaTek PPE 硬件流量分载、TCP 拥塞控制和 WED。PPE 可处理符合条件的以太网路由流量；WED 将支持的 Wi-Fi 流量接入 PPE。代理和本机终止的连接可能不能分载。
-
-IPv4 UDP NAT 提供系统默认、按来源 IP 限制的受限锥形、全锥形三档。默认使用系统 NAT；选择后两档需确认安全提示。切换会清理旧 IPv4 UDP 连接和映射，TCP、IPv6 状态不在清理范围内。
-
-WED 默认关闭，保存开关只修改下次启动的驱动参数，不会自动重启或重载 Wi-Fi。页面区分请求启用、成功附加和失败，并提供错误日志。配对内核/驱动已完成编译链接；真实 WED 转发与稳定性仍待受控实机验证。详见[移植和构建状态](docs/firmware-2026-10.md)。
-
-### 网络身份和信道分析
-
-网络身份可为逻辑接口保存和切换 MAC、DHCP 上报主机名；默认选择 WAN，其他接口提供超时回滚。信道图坐标位于绘图区外，随亮暗主题切换，显示无线技术和简化的加密信息。TR3000 的厂商驱动适配源码保存在 `platforms/tr3000/`，不会混入 TR3600 的系统覆盖文件。
+开启流量分载后，客户端流量统计可能不全，代理连接也不一定能分载；限速和黑名单需先关闭流量分载再使用。
 
 ### 散热风扇控制
 
@@ -50,13 +38,9 @@ WED 默认关闭，保存开关只修改下次启动的驱动参数，不会自�
 
 ## 下载
 
-**[2026-10-07 固件及配套软件包](https://github.com/EDBWDY/cudy-tr3600-openwrt/releases/tag/2026.10.07)**
+**[2026-10-20 Final 固件及配套软件包](https://github.com/EDBWDY/cudy-tr3600-openwrt/releases/tag/2026.10.20)**
 
 在 Release 页面的 Assets 中下载固件和配套软件包。
-
-新的分阶段构建见 [Actions](https://github.com/EDBWDY/cudy-tr3600-openwrt/actions/workflows/build.yml)。`candidate-*` 预发布先保存编译产物，再追加独立验证报告；`checkpoint-*` 是加密编译检查点，不是可刷固件。当前设备不会被自动刷写。
-
-该版本未包含客户端管理和硬件加速管理插件，改动已经提交，但未测试重新构建。
 
 | 文件 | 用途 |
 | --- | --- |
@@ -76,11 +60,9 @@ WED 默认关闭，保存开关只修改下次启动的驱动参数，不会自�
 
 默认管理地址：`192.168.1.1`
 
-## 构建和续编
+## 构建
 
-运行 `TR3600 staged public firmware`，依次完成工具链、Rust/LLVM、固件和独立验证。编译中断后选择同一阶段并提供已保存的 `checkpoint-*` Release 标签；完整上一阶段才可进入下一阶段。源码指纹、目标配置、绝对工作路径和每块校验值均需匹配。
-
-检查点保留下载包、编译目录、staging、stamp、硬链接及纳秒时间戳。生成的签名私钥随检查点加密，密钥只保存在仓库 Actions Secret。不会上传 Actions artifact 或 cache。测试失败只重跑独立验证流程，不需要重新编译固件；详见[构建说明](docs/firmware-2026-10.md)。
+使用公有 Actions 分阶段编译，保留工具链和完整检查点，失败后可以续编。固件先上传，再独立做验证，测试失败不会把编译产物一起丢掉。详见[构建说明](docs/firmware-2026-10.md)。
 
 ## 致谢
 
