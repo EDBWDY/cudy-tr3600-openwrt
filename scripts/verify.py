@@ -155,7 +155,7 @@ def installed_luci_css(source):
 for name, relative in {
     'turboacc-control':'usr/libexec/turboacc-control',
     'turboacc-ui':'usr/libexec/turboacc-ui',
-    'turboacc_cards.js':'www/luci-static/resources/view/turboacc_cards_v10.js',
+    'turboacc_cards.js':'www/luci-static/resources/view/turboacc_cards_v11.js',
     'turboacc_cards.css':'www/luci-static/resources/turboacc_cards_v7.css',
     'turboacc-wed':'usr/libexec/turboacc-wed',
     'turboacc.rpc':'usr/libexec/rpcd/luci.turboacc',
