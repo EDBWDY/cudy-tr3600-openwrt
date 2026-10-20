@@ -5,6 +5,7 @@ import json
 import shutil
 import subprocess
 import tarfile
+import tempfile
 from pathlib import Path
 from feature_requirements import requested_packages, verify_dnsmasq_nftset
 from privacy_audit import audit_source, audit_image
@@ -133,6 +134,24 @@ def installed_luci_javascript(source):
     return data
 
 
+def installed_luci_css(source):
+    if 'CONFIG_LUCI_CSSTIDY=y' not in (SRC / '.config').read_text().splitlines():
+        return source.read_bytes()
+    candidates = [SRC / 'staging_dir' / directory / 'bin/csstidy'
+                  for directory in ('hostpkg', 'host')]
+    tool = next((path for path in candidates if path.is_file()), None)
+    if tool is None:
+        raise RuntimeError('Preserved LuCI csstidy host tool missing')
+    # Reproduce the pinned luci.mk CssTidy rule exactly. Comparing normalized
+    # whitespace or selected declarations would conceal changed CSS rules.
+    with tempfile.TemporaryDirectory(prefix='luci-css-audit-') as temporary:
+        output = Path(temporary) / 'expected.css'
+        subprocess.run([str(tool), str(source), '--template=highest',
+                        '--remove_last_semicolon=true', str(output)],
+                       capture_output=True, check=True)
+        return output.read_bytes()
+
+
 for name, relative in {
     'turboacc-control':'usr/libexec/turboacc-control',
     'turboacc-ui':'usr/libexec/turboacc-ui',
@@ -144,7 +163,8 @@ for name, relative in {
     'turboacc_wed.js':'www/luci-static/resources/turboacc_wed.js',
 }.items():
     original = ROOT / 'experiments/turboacc' / name
-    expected = installed_luci_javascript(original) if original.suffix == '.js' else original.read_bytes()
+    expected = (installed_luci_javascript(original) if original.suffix == '.js' else
+                installed_luci_css(original) if original.suffix == '.css' else original.read_bytes())
     if (rootfs / relative).read_bytes() != expected:
         raise RuntimeError('TurboACC installed source differs: ' + name)
 frontend = SRC / 'package/custom/luci-app-turboacc-mtk/htdocs/luci-static/resources/view/turboacc.js'
