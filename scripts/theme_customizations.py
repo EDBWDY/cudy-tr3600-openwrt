@@ -295,6 +295,17 @@ def customize_theme(package):
         text=text[:start]+text[pos:]
     if '/* argon-scroll-table-compat */' not in text:
         text += '\n'+Path(__file__).with_name('argon_legacy_tables.css').read_text(encoding='utf-8')
+    if '/* argon-interface-action-width */' not in text:
+        # New LuCI measures the buttons and fixes this column's width inline.
+        # Argon's original interface layout used the table's automatic sizing.
+        # Match only interface summaries, preserving every other table's sizing.
+        text += '''\n/* argon-interface-action-width */
+.cbi-section-table:has(.ifacebox) > tbody > .tr > .cbi-section-actions {
+ width:auto !important;
+ min-width:0 !important;
+ padding:1.1em 1.25rem;
+}
+'''
     path.write_text(text, encoding='utf-8')
     css_version = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
     # LuCI derives every module's cache key from luci.js's version query.
