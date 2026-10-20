@@ -136,7 +136,7 @@ def installed_luci_javascript(source):
 for name, relative in {
     'turboacc-control':'usr/libexec/turboacc-control',
     'turboacc-ui':'usr/libexec/turboacc-ui',
-    'turboacc_cards.js':'www/luci-static/resources/view/turboacc_cards_v4.js',
+    'turboacc_cards.js':'www/luci-static/resources/view/turboacc_cards_v5.js',
     'turboacc_cards.css':'www/luci-static/resources/turboacc_cards_v3.css',
     'turboacc-wed':'usr/libexec/turboacc-wed',
     'turboacc.rpc':'usr/libexec/rpcd/luci.turboacc',
@@ -153,13 +153,29 @@ if (rootfs / 'www/luci-static/resources/view/turboacc.js').read_bytes() != insta
 if (rootfs / 'usr/share/luci/menu.d/luci-app-tr3600-acceleration.json').exists():
     raise RuntimeError('Obsolete acceleration controller must not coexist with TurboACC')
 cone = (rootfs / 'etc/config/turboacc').read_text()
-for expected in ["option fullcone '0'", "option fullcone_protocol 'udp'", "option wed_enable '0'"]:
+for expected in ["option fullcone '0'", "option fullcone_protocol 'udp'", "option fullcone_tcp '0'", "option wed_enable '0'"]:
     if expected not in cone:
         raise RuntimeError('Unsafe acceleration first-boot default: ' + expected)
 installed_port=json.loads((rootfs/'usr/share/turboacc/port-manifest.json').read_text())
 compiled_port=json.loads((SRC/'acceleration-port-manifest.json').read_text())
 if installed_port != compiled_port or installed_port['hardware_runtime_verified']:
     raise RuntimeError('Acceleration port provenance or physical verification claim differs')
+reviewed_patches = {
+    'target/linux/generic/hack-6.12/9998-tr3600-fullcone.patch': 'bcm-fullcone-6.12-experimental.patch',
+    'target/linux/mediatek/patches-6.12/9998-tr3600-wed.patch': 'mt7987-wed-kernel.patch',
+    'package/kernel/mt76/patches/9998-tr3600-wed.patch': 'mt7987-wed-mt76.patch',
+}
+expected_patches = {path: hashlib.sha256((ROOT / 'experiments/turboacc' / name).read_bytes()).hexdigest()
+                    for path, name in reviewed_patches.items()}
+if installed_port['patches'] != expected_patches:
+    raise RuntimeError('Installed acceleration patch hashes differ from reviewed source')
+for module, markers in {
+    'nf_conntrack.ko': [b'nf_conntrack_nat_mode', b'nf_conntrack_nat_tcp'],
+    'nf_nat.ko': [b'BCM-NAT-TCP'],
+}.items():
+    matches = list((rootfs / 'lib/modules').rglob(module))
+    if len(matches) != 1 or any(marker not in matches[0].read_bytes() for marker in markers):
+        raise RuntimeError('Installed TCP cone NAT kernel backend missing: ' + module)
 samba = json.loads((rootfs / 'usr/share/luci/menu.d/luci-app-samba4.json').read_text())['admin/services/samba4']
 if samba['title'] != 'Samba' or samba['action']['path'] != 'samba4-tr3600-v2':
     raise RuntimeError('Samba menu presentation update is missing')
@@ -198,6 +214,8 @@ verification = {
     'image_bytes': image.stat().st_size,
     'image_sha256': hashlib.sha256(image.read_bytes()).hexdigest(),
     'installed_files_checked': required_files, 'required_modules_checked': required_modules,
+    'acceleration_patches': expected_patches,
+    'tcp_cone_nat': 'kernel sysctl and helper present; default disabled; physical forwarding not established by image inspection',
     'validation': 'Archive, metadata, device manifest, installed plugin/core files and USB modules checked; not yet flashed or runtime tested.'
 }
 (OUT / 'verification.json').write_text(json.dumps(verification, indent=2) + '\n')
