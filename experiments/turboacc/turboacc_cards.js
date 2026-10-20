@@ -135,7 +135,11 @@ return view.extend({
         }
         function selectRow(key, title, description, options) {
             var input = self.inputs[key] = E('select', { 'aria-label': title, 'change': function() { self.riskConfirmed = false; self.changed(); } }, options.map(function(option) { return E('option', { 'value': option[0] }, option[1]); }));
-            return E('div', { 'class': 'acc-setting' }, [E('div', { 'class': 'acc-info' }, [E('h3', {}, title), E('div', { 'class': 'acc-subtitle' }, description)]), input]);
+            var fields = [E('div', { 'class': 'acc-info' }, [E('h3', {}, title), E('div', { 'class': 'acc-subtitle' }, description)]), input];
+            if (key === 'nat') fields.push(E('div', { 'class': 'acc-nat-footer' }, [
+                E('label', { 'class': 'acc-checkbox' }, [self.inputs.nat_tcp, E('span', {}, '覆盖TCP设置')]), self.tcpNote
+            ]));
+            return E('div', { 'class': 'acc-setting' + (key === 'nat' ? ' acc-nat-setting' : '') }, fields);
         }
         this.tcpNote = E('div', { 'class': 'acc-subtitle' });
         var tcp = this.inputs.nat_tcp = E('input', { 'type': 'checkbox', 'change': function() { self.riskConfirmed = false; self.changed(); } });
@@ -143,7 +147,7 @@ return view.extend({
         this.apply = E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() { return self.applySettings(); } }, '保存并应用');
         this.reset = E('button', { 'class': 'cbi-button', 'click': function() { self.error.textContent = ''; self.update(self.data, true); } }, '撤销改动');
         this.root = E('div', { 'class': 'acc-page' }, [
-            E('link', { 'rel': 'stylesheet', 'href': L.resource('turboacc_cards_v3.css') }),
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('turboacc_cards_v7.css') }),
             E('div', { 'class': 'acc-heading' }, E('h2', {}, '网络加速')),
             E('div', { 'class': 'acc-panel' }, [
                 E('div', { 'class': 'acc-summary' }, [this.summary,
@@ -151,8 +155,7 @@ return view.extend({
                 row('software', '软件流量分载', 'Netfilter Flowtable · 由 CPU 通过快速路径转发，减少重复处理'),
                 row('hardware', '硬件流量分载', 'MediaTek PPE · 将符合条件的连接交给硬件转发，支持以太网'),
                 row('wed', '无线加速', 'WED · 配合硬件流量分载加速 Wi-Fi 收发，重启后生效'),
-                selectRow('nat', 'NAT 模式', '默认用于 IPv4 UDP，可选择同时用于 TCP。', [['0', '系统默认 NAT'], ['1', '受限锥形 NAT'], ['2', '全锥形 NAT']]),
-                E('div', { 'class': 'acc-setting acc-tcp-setting' }, [E('div', { 'class': 'acc-info' }, [E('h3', {}, '同时作用于 TCP'), this.tcpNote]), E('label', { 'class': 'acc-checkbox' }, [tcp, '启用'])]),
+                selectRow('nat', 'NAT 模式', '默认用于 IPv4 UDP，可选择同时用于 TCP。', [['0', '默认（MASQUERADE）'], ['1', '受限锥形 NAT'], ['2', '全锥形 NAT']]),
                 selectRow('cca', 'TCP 拥塞控制算法', '用于路由器自身发起或代理终止的 TCP 连接；不改变转发设备自身的 TCP 拥塞算法。', algorithms),
                 this.notes, this.wedFault, this.error,
                 E('div', { 'class': 'acc-actions' }, [this.dirty, E('div', {}, [this.reset, this.apply])])

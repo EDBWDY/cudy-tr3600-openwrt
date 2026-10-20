@@ -1,5 +1,6 @@
 """Apply scoped layout adjustments to the bundled Argon theme."""
 from pathlib import Path
+import hashlib
 import re
 
 RULES = r"""
@@ -304,9 +305,14 @@ def customize_theme(package):
     if '/* argon-scroll-table-compat */' not in text:
         text += '\n'+Path(__file__).with_name('argon_legacy_tables.css').read_text(encoding='utf-8')
     path.write_text(text, encoding='utf-8')
+    css_version = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
     # LuCI derives every module's cache key from luci.js's version query.
     for header in [*Path(package).rglob('header.ut'), *Path(package).rglob('header.htm')]:
         data=header.read_text(encoding='utf-8')
+        data = re.sub(r'(css/cascade\.css\?v=)([^"\s]+)',
+                      lambda match: match[1] + match[2].split('-')[0] + '-router-css-' + css_version,
+                      data)
+        header.write_text(data, encoding='utf-8')
         if 'luci.js?v=' in data and '-service-controls-1' not in data:
             data,n=re.subn(r'(luci\.js\?v=)([^\"]+)(\")',r'\1\2-service-controls-1\3',data)
             if n != 1:

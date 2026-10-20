@@ -1,5 +1,6 @@
 """Build-input regressions for responsive controls and native table layouts."""
 import tempfile
+import hashlib
 import unittest
 from pathlib import Path
 
@@ -71,7 +72,8 @@ class ResponsiveCustomizationTests(unittest.TestCase):
                 '@media(max-width:768px){.old{display:block}}\n'
                 '@media(max-width:600px){.old td{display:table-cell}}\n'
                 '.keep-after {color:blue}\n', encoding='utf-8')
-            header.write_text('<script src="{{ resource }}/luci.js?v={{ version.luciversion }}"></script>', encoding='utf-8')
+            header.write_text('<link href="{{ media }}/css/cascade.css?v=2.4.6">'
+                '<script src="{{ resource }}/luci.js?v={{ version.luciversion }}"></script>', encoding='utf-8')
             customize_theme(root)
             result, result_header = css.read_bytes(), header.read_bytes()
             customize_theme(root)
@@ -82,6 +84,10 @@ class ResponsiveCustomizationTests(unittest.TestCase):
             self.assertNotIn(b'argon-legacy-table-mobile-compat', result)
             self.assertEqual(result.count(b'argon-scroll-table-compat'), 1)
             self.assertIn(b'-ts-scroll-2', result_header)
+            self.assertIn(('2.4.6-router-css-' + hashlib.sha256(result).hexdigest()[:12]).encode(), result_header)
+            css.write_text(css.read_text() + '\n.new-rule {color:green}\n')
+            customize_theme(root)
+            self.assertNotEqual(header.read_bytes(), result_header)
 
 
 if __name__ == '__main__':

@@ -39,5 +39,10 @@
 .acc-page .acc-setting{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,250px);align-items:center;gap:22px;padding:21px 22px;border-bottom:1px solid var(--acc-line)}
 .acc-page .acc-setting select{width:100%;min-width:0;margin:0;color:var(--acc-text);background:var(--acc-bg);border:1px solid var(--acc-line);border-radius:4px;height:38px}
 .acc-page .acc-checkbox{display:flex;align-items:center;justify-content:flex-end;gap:9px;margin:0;color:var(--acc-text)}
-.acc-page .acc-checkbox input{margin:0;float:none}
-@media(max-width:600px){.acc-page .acc-setting{grid-template-columns:minmax(0,1fr);gap:12px;padding:18px 16px}.acc-page .acc-tcp-setting{grid-template-columns:minmax(0,1fr) auto}}
+.acc-page .acc-checkbox input{margin:0;float:none;top:0;right:0;flex:none}
+.acc-page .acc-nat-setting{align-items:start;row-gap:12px}
+.acc-page .acc-nat-setting .acc-info{padding-top:7px}
+.acc-page .acc-nat-footer{grid-column:1/-1;display:flex;align-items:center;gap:12px;min-width:0}
+.acc-page .acc-nat-footer .acc-checkbox{justify-content:flex-start;line-height:1.5;white-space:nowrap}
+.acc-page .acc-nat-footer .acc-subtitle{margin:0}
+@media(max-width:600px){.acc-page .acc-setting{grid-template-columns:minmax(0,1fr);gap:12px;padding:18px 16px}.acc-page .acc-nat-setting .acc-info{padding-top:0}.acc-page .acc-nat-footer{flex-direction:column;align-items:flex-start;gap:5px}.acc-page .acc-nat-footer .acc-subtitle{margin-left:25px}}
