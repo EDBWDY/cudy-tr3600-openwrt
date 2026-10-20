@@ -34,19 +34,6 @@ RULES = r"""
  }
 }
 
-@media screen and (max-width: 1152px) {
- #cbi-network-interface > .cbi-section-table > tbody { display:block; width:100%; box-sizing:border-box; }
- #cbi-network-interface > .cbi-section-table > tbody > .cbi-section-table-row { width:100%; box-sizing:border-box; }
-}
-/* interface-card-content-width */
-@media screen and (min-width: 769px) and (max-width: 1152px) {
- #cbi-network-interface > .cbi-section-table > tbody > .cbi-section-table-row { justify-content: space-between; }
- #cbi-network-interface > .cbi-section-table > tbody > .cbi-section-table-row > .cbi-value-field {
-  flex: 10 10 50%; min-width: 0; box-sizing: border-box;
- }
- #cbi-network-interface > .cbi-section-table > tbody > .cbi-section-table-row > .cbi-section-actions { padding: 13.2px 20px; }
-}
-
 body[data-page="admin-status-overview"] p:has(> a[href$="/admin/system/tr3600_usb"]) {
  display:flex; justify-content:flex-end; align-items:center; gap:6px; flex-wrap:wrap;
 }
@@ -280,6 +267,10 @@ def customize_theme(package):
         raise RuntimeError('Expected one Argon cascade stylesheet')
     path = paths[0]
     text = path.read_text(encoding='utf-8')
+    # Withdraw the old TR3600-only interface card overrides. Keep Argon's
+    # original layout and the shared native-tbody compatibility rules.
+    text = re.sub(r'/\* interface-card-(?:full-width|content-width) \*/', '', text)
+    text = re.sub(r'@media[^{}]+\{\s*(?:#cbi-network-interface[^{}]*\{[^{}]*\}\s*)+\}', '', text)
     if '/* router-layout-adjustments */' not in text:
         text = text.rstrip()+'\n'+RULES
     if '/* argon-native-table-compat:' not in text:

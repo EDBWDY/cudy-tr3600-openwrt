@@ -15,6 +15,11 @@ on:
         description: Explicitly refresh reviewed target-only fixes while preserving GCC/Rust
         type: boolean
         default: false
+      final_tag:
+        description: Optional dated final Release tag; publish only after independent validation succeeds
+        type: string
+        required: false
+        default: ''
 permissions:
   contents: write
 concurrency:
@@ -200,3 +205,13 @@ jobs:
       candidate_release: ${{ needs.firmware.outputs.candidate }}
       source_ref: ${{ github.sha }}
     secrets: inherit
+  publish:
+    name: Publish verified final firmware
+    needs: [firmware, validate]
+    if: always() && inputs.final_tag != '' && needs.firmware.result == 'success' && needs.validate.result == 'success'
+    uses: ./.github/workflows/publish-final.yml
+    with:
+      candidate_release: ${{ needs.firmware.outputs.candidate }}
+      checkpoint_tag: ${{ needs.firmware.outputs.checkpoint }}
+      source_ref: ${{ github.sha }}
+      final_tag: ${{ inputs.final_tag }}

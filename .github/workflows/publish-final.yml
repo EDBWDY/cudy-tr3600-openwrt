@@ -1,0 +1,38 @@
+name: Publish independently verified final release
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_release: {required: true, type: string}
+      checkpoint_tag: {required: true, type: string}
+      source_ref: {required: true, type: string}
+      final_tag: {required: true, type: string}
+  workflow_call:
+    inputs:
+      candidate_release: {required: true, type: string}
+      checkpoint_tag: {required: true, type: string}
+      source_ref: {required: true, type: string}
+      final_tag: {required: true, type: string}
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout reviewed publication checks
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - name: Validate preserved output and publish through a complete draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          CANDIDATE_RELEASE: ${{ inputs.candidate_release }}
+          CHECKPOINT_TAG: ${{ inputs.checkpoint_tag }}
+          FINAL_TAG: ${{ inputs.final_tag }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_REF"
+          export GITHUB_SHA="$SOURCE_REF"
+          python3 scripts/promote_final_release.py "$CANDIDATE_RELEASE" "$CHECKPOINT_TAG" "$FINAL_TAG"

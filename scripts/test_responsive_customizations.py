@@ -26,6 +26,21 @@ function update(view, content) { view.replaceChildren(content); }
 
 
 class ResponsiveCustomizationTests(unittest.TestCase):
+    def test_withdraws_interface_overrides_without_changing_shared_table_layout(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            css = root / 'cascade.css'
+            css.write_text('/* router-layout-adjustments */\n'
+                '@media(max-width:1152px){#cbi-network-interface > table > tbody{display:block;width:100%}}\n'
+                '@media(min-width:769px) and (max-width:1152px){#cbi-network-interface .row{justify-content:space-between}#cbi-network-interface .field{flex:10 10 50%}}\n'
+                '@media(max-width:1152px){table.native > tbody{display:block;width:100%}}', encoding='utf-8')
+            customize_theme(root)
+            result = css.read_text()
+            self.assertNotIn('#cbi-network-interface', result)
+            self.assertIn('table.native > tbody{display:block;width:100%}', result)
+            customize_theme(root)
+            self.assertEqual(css.read_text(), result)
+
     def test_controls_accept_formatted_feed_and_compressed_package_source(self):
         for source in [CONTROLS, CONTROLS.replace('\n', '').replace('    ', '')]:
             with self.subTest(source=source):
