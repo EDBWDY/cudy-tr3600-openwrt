@@ -103,10 +103,7 @@ def publish(candidate, checkpoint_tag, tag):
             '- 配对的 WED 驱动修复与 MediaTek PPE / Netfilter 流量分载。\n'
             '- NAT 模式默认 MASQUERADE，受限锥形、全锥形及 TCP 覆盖需主动启用并确认风险。\n'
             '- 修复主题资源缓存、接口排版、Tailscale 手机表格和概览 USB 按钮对齐。\n'
-            '- 包含客户端管理、网络身份、USB 管理、信道分析与常用插件。\n\n'
-            '固件先保存、检查点后保存，再独立验证；镜像与源码隐私检查已通过。'
-            '未包含个人配置、密码、订阅或 VPN 身份。\n\n'
-            f'源码：`{source}`；详细检查结果见 Assets 中的报告。\n', encoding='utf-8')
+            '- 包含客户端管理、网络身份、USB 管理、信道分析与常用插件。\n', encoding='utf-8')
         existing = subprocess.run(['gh', 'release', 'view', tag, '--json', 'isDraft,targetCommitish'],
                                   capture_output=True, text=True)
         if existing.returncode == 0:
