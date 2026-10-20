@@ -3,11 +3,21 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from promote_final_release import IMAGE, validate
+from promote_final_release import IMAGE, validate, release_metadata
 
 
 class FinalReleaseValidationTests(unittest.TestCase):
+    def test_draft_upload_is_checked_by_release_id_instead_of_tag_endpoint(self):
+        endpoint = 'https://api.github.com/repos/owner/repo/releases/123'
+        with patch.dict('os.environ', {'GH_REPO': 'owner/repo'}), patch(
+                'promote_final_release.gh', side_effect=[
+                    json.dumps({'apiUrl': endpoint}),
+                    json.dumps({'tag_name': '2026.10.20', 'draft': True, 'assets': []})]) as command:
+            self.assertTrue(release_metadata('2026.10.20')['draft'])
+            command.assert_called_with('api', endpoint, capture=True)
+
     def fixture(self, root):
         source = 'a' * 40
         checkpoint = {'source_commit': source, 'stage': 'firmware', 'stage_complete': True}

@@ -58,6 +58,20 @@ def gh(*args, capture=False):
     return result.stdout if capture else None
 
 
+def release_metadata(tag):
+    # The tag endpoint omits drafts, even when `gh release view` finds them.
+    # Resolve the draft's immutable release ID before checking uploaded assets.
+    view = json.loads(gh('release', 'view', tag, '--json', 'apiUrl', capture=True))
+    endpoint = view['apiUrl']
+    expected = 'https://api.github.com/repos/' + os.environ['GH_REPO'] + '/releases/'
+    if not endpoint.startswith(expected) or not endpoint[len(expected):].isdigit():
+        raise RuntimeError('Unexpected release API identity')
+    metadata = json.loads(gh('api', endpoint, capture=True))
+    if metadata.get('tag_name') != tag:
+        raise RuntimeError('Release API returned a different tag')
+    return metadata
+
+
 def publish(candidate, checkpoint_tag, tag):
     source = os.environ['GITHUB_SHA']
     repo = os.environ['GH_REPO']
@@ -105,7 +119,7 @@ def publish(candidate, checkpoint_tag, tag):
         paths = sorted(path for path in folder.iterdir() if path.is_file())
         for path in paths:
             gh('release', 'upload', tag, path, '--clobber')
-        remote = json.loads(gh('api', f'repos/{repo}/releases/tags/{tag}', capture=True))
+        remote = release_metadata(tag)
         assets = {asset['name']: asset for asset in remote['assets']}
         for path in paths:
             asset = assets.get(path.name, {})
