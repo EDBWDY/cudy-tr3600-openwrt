@@ -1,7 +1,8 @@
 diff --git a/dma.c b/dma.c
+index f8c2fe5..c3eaebb 100644
 --- a/dma.c
 +++ b/dma.c
-@@ -534,7 +534,8 @@
+@@ -534,7 +534,8 @@ mt76_dma_get_buf(struct mt76_dev *dev, struct mt76_queue *q, int idx,
  		t->ptr = NULL;
  
  		mt76_put_rxwi(dev, t);
@@ -11,7 +12,7 @@ diff --git a/dma.c b/dma.c
  			*drop |= !!(buf1 & MT_DMA_CTL_WO_DROP);
  	} else {
  		dma_sync_single_for_cpu(dev->dma_dev, e->dma_addr[0],
-@@ -887,8 +888,7 @@
+@@ -887,8 +888,7 @@ mt76_dma_rx_cleanup(struct mt76_dev *dev, struct mt76_queue *q)
  		    mt76_queue_is_wed_rro(q))
  			continue;
  
@@ -21,10 +22,140 @@ diff --git a/dma.c b/dma.c
  			mt76_put_page_pool_buf(buf, false);
  	} while (1);
  
+diff --git a/firmware/WIFI_MT7922_patch_mcu_1_1_hdr.bin b/firmware/WIFI_MT7922_patch_mcu_1_1_hdr.bin
+index 4671f91..2602e8f 100644
+Binary files a/firmware/WIFI_MT7922_patch_mcu_1_1_hdr.bin and b/firmware/WIFI_MT7922_patch_mcu_1_1_hdr.bin differ
+diff --git a/firmware/WIFI_MT7961_patch_mcu_1_2_hdr.bin b/firmware/WIFI_MT7961_patch_mcu_1_2_hdr.bin
+index 49bc9cb..a43de55 100644
+Binary files a/firmware/WIFI_MT7961_patch_mcu_1_2_hdr.bin and b/firmware/WIFI_MT7961_patch_mcu_1_2_hdr.bin differ
+diff --git a/firmware/WIFI_RAM_CODE_MT7922_1.bin b/firmware/WIFI_RAM_CODE_MT7922_1.bin
+index 9cdb591..8c20483 100644
+Binary files a/firmware/WIFI_RAM_CODE_MT7922_1.bin and b/firmware/WIFI_RAM_CODE_MT7922_1.bin differ
+diff --git a/firmware/WIFI_RAM_CODE_MT7961_1.bin b/firmware/WIFI_RAM_CODE_MT7961_1.bin
+index 0ba7519..40f435f 100644
+Binary files a/firmware/WIFI_RAM_CODE_MT7961_1.bin and b/firmware/WIFI_RAM_CODE_MT7961_1.bin differ
+diff --git a/firmware/mt7603_e2.bin b/firmware/mt7603_e2.bin
+index 2bc6ac4..ef6c30a 100644
+Binary files a/firmware/mt7603_e2.bin and b/firmware/mt7603_e2.bin differ
+diff --git a/firmware/mt7610e.bin b/firmware/mt7610e.bin
+index 7660084..47d0b63 100644
+Binary files a/firmware/mt7610e.bin and b/firmware/mt7610e.bin differ
+diff --git a/firmware/mt7615_cr4.bin b/firmware/mt7615_cr4.bin
+index 741fec2..db50dec 100644
+Binary files a/firmware/mt7615_cr4.bin and b/firmware/mt7615_cr4.bin differ
+diff --git a/firmware/mt7615_n9.bin b/firmware/mt7615_n9.bin
+index 2490ace..e5462c5 100644
+Binary files a/firmware/mt7615_n9.bin and b/firmware/mt7615_n9.bin differ
+diff --git a/firmware/mt7622_n9.bin b/firmware/mt7622_n9.bin
+index 444d5e0..1727bce 100644
+Binary files a/firmware/mt7622_n9.bin and b/firmware/mt7622_n9.bin differ
+diff --git a/firmware/mt7628_e1.bin b/firmware/mt7628_e1.bin
+index 72aed6f..c36ee7d 100644
+Binary files a/firmware/mt7628_e1.bin and b/firmware/mt7628_e1.bin differ
+diff --git a/firmware/mt7628_e2.bin b/firmware/mt7628_e2.bin
+index 7652e4a..e5b6e03 100644
+Binary files a/firmware/mt7628_e2.bin and b/firmware/mt7628_e2.bin differ
+diff --git a/firmware/mt7662_firmware_e3_v1.7.bin b/firmware/mt7662_firmware_e3_v1.7.bin
+index 101fc83..a108633 100644
+Binary files a/firmware/mt7662_firmware_e3_v1.7.bin and b/firmware/mt7662_firmware_e3_v1.7.bin differ
+diff --git a/firmware/mt7662_firmware_e3_v1.9.bin b/firmware/mt7662_firmware_e3_v1.9.bin
+index 26c6fbb..2f66524 100644
+Binary files a/firmware/mt7662_firmware_e3_v1.9.bin and b/firmware/mt7662_firmware_e3_v1.9.bin differ
+diff --git a/firmware/mt7662_firmware_e3_v2.3.bin b/firmware/mt7662_firmware_e3_v2.3.bin
+index b0cc8ae..28e4fa3 100644
+Binary files a/firmware/mt7662_firmware_e3_v2.3.bin and b/firmware/mt7662_firmware_e3_v2.3.bin differ
+diff --git a/firmware/mt7663_n9_rebb.bin b/firmware/mt7663_n9_rebb.bin
+index fe5733f..f1fc58d 100644
+Binary files a/firmware/mt7663_n9_rebb.bin and b/firmware/mt7663_n9_rebb.bin differ
+diff --git a/firmware/mt7663_n9_v3.bin b/firmware/mt7663_n9_v3.bin
+index 5ff186a..d8603fd 100644
+Binary files a/firmware/mt7663_n9_v3.bin and b/firmware/mt7663_n9_v3.bin differ
+diff --git a/firmware/mt7663pr2h.bin b/firmware/mt7663pr2h.bin
+index 3456479..53c3655 100644
+Binary files a/firmware/mt7663pr2h.bin and b/firmware/mt7663pr2h.bin differ
+diff --git a/firmware/mt7663pr2h_rebb.bin b/firmware/mt7663pr2h_rebb.bin
+index 8a23b61..dedd557 100644
+Binary files a/firmware/mt7663pr2h_rebb.bin and b/firmware/mt7663pr2h_rebb.bin differ
+diff --git a/firmware/mt7915_rom_patch.bin b/firmware/mt7915_rom_patch.bin
+index f3aa076..5e80652 100644
+Binary files a/firmware/mt7915_rom_patch.bin and b/firmware/mt7915_rom_patch.bin differ
+diff --git a/firmware/mt7915_wa.bin b/firmware/mt7915_wa.bin
+index bd46eef..6121764 100644
+Binary files a/firmware/mt7915_wa.bin and b/firmware/mt7915_wa.bin differ
+diff --git a/firmware/mt7916_wa.bin b/firmware/mt7916_wa.bin
+index 4ff7c6b..3a73665 100644
+Binary files a/firmware/mt7916_wa.bin and b/firmware/mt7916_wa.bin differ
+diff --git a/firmware/mt7916_wm.bin b/firmware/mt7916_wm.bin
+index 8a4a8b1..adc63f3 100644
+Binary files a/firmware/mt7916_wm.bin and b/firmware/mt7916_wm.bin differ
+diff --git a/firmware/mt7925/WIFI_MT7925_PATCH_MCU_1_1_hdr.bin b/firmware/mt7925/WIFI_MT7925_PATCH_MCU_1_1_hdr.bin
+index e6a4727..605b34d 100644
+Binary files a/firmware/mt7925/WIFI_MT7925_PATCH_MCU_1_1_hdr.bin and b/firmware/mt7925/WIFI_MT7925_PATCH_MCU_1_1_hdr.bin differ
+diff --git a/firmware/mt7925/WIFI_RAM_CODE_MT7925_1_1.bin b/firmware/mt7925/WIFI_RAM_CODE_MT7925_1_1.bin
+index 73b8a92..d08afc0 100644
+Binary files a/firmware/mt7925/WIFI_RAM_CODE_MT7925_1_1.bin and b/firmware/mt7925/WIFI_RAM_CODE_MT7925_1_1.bin differ
+diff --git a/firmware/mt7981_wa.bin b/firmware/mt7981_wa.bin
+index 6fdc391..cf93c34 100644
+Binary files a/firmware/mt7981_wa.bin and b/firmware/mt7981_wa.bin differ
+diff --git a/firmware/mt7981_wm.bin b/firmware/mt7981_wm.bin
+index 205441e..f8eeb27 100644
+Binary files a/firmware/mt7981_wm.bin and b/firmware/mt7981_wm.bin differ
+diff --git a/firmware/mt7981_wo.bin b/firmware/mt7981_wo.bin
+index 896ac86..effb7ac 100644
+Binary files a/firmware/mt7981_wo.bin and b/firmware/mt7981_wo.bin differ
+diff --git a/firmware/mt7986_wa.bin b/firmware/mt7986_wa.bin
+index 9c94c08..063938e 100644
+Binary files a/firmware/mt7986_wa.bin and b/firmware/mt7986_wa.bin differ
+diff --git a/firmware/mt7986_wm.bin b/firmware/mt7986_wm.bin
+index cb693ca..808fe67 100644
+Binary files a/firmware/mt7986_wm.bin and b/firmware/mt7986_wm.bin differ
+diff --git a/firmware/mt7986_wm_mt7975.bin b/firmware/mt7986_wm_mt7975.bin
+index cad0010..a2ace3e 100644
+Binary files a/firmware/mt7986_wm_mt7975.bin and b/firmware/mt7986_wm_mt7975.bin differ
+diff --git a/firmware/mt7986_wo_0.bin b/firmware/mt7986_wo_0.bin
+index f34dbd5..c36a829 100644
+Binary files a/firmware/mt7986_wo_0.bin and b/firmware/mt7986_wo_0.bin differ
+diff --git a/firmware/mt7986_wo_1.bin b/firmware/mt7986_wo_1.bin
+index 1f0f2ce..db7c3d4 100644
+Binary files a/firmware/mt7986_wo_1.bin and b/firmware/mt7986_wo_1.bin differ
+diff --git a/firmware/mt7996/mt7990_wm.bin b/firmware/mt7996/mt7990_wm.bin
+index e539c4b..a4d1991 100644
+Binary files a/firmware/mt7996/mt7990_wm.bin and b/firmware/mt7996/mt7990_wm.bin differ
+diff --git a/firmware/mt7996/mt7992_dsp.bin b/firmware/mt7996/mt7992_dsp.bin
+index 6ad0091..37de7a0 100644
+Binary files a/firmware/mt7996/mt7992_dsp.bin and b/firmware/mt7996/mt7992_dsp.bin differ
+diff --git a/firmware/mt7996/mt7992_dsp_23.bin b/firmware/mt7996/mt7992_dsp_23.bin
+index 29ad4f7..31d8eaa 100644
+Binary files a/firmware/mt7996/mt7992_dsp_23.bin and b/firmware/mt7996/mt7992_dsp_23.bin differ
+diff --git a/firmware/mt7996/mt7992_wa.bin b/firmware/mt7996/mt7992_wa.bin
+index 7bf5c9b..3c28fe8 100644
+Binary files a/firmware/mt7996/mt7992_wa.bin and b/firmware/mt7996/mt7992_wa.bin differ
+diff --git a/firmware/mt7996/mt7992_wa_23.bin b/firmware/mt7996/mt7992_wa_23.bin
+index 54bdfb5..7bf458f 100644
+Binary files a/firmware/mt7996/mt7992_wa_23.bin and b/firmware/mt7996/mt7992_wa_23.bin differ
+diff --git a/firmware/mt7996/mt7992_wm.bin b/firmware/mt7996/mt7992_wm.bin
+index 32fa52c..8b7d6dc 100644
+Binary files a/firmware/mt7996/mt7992_wm.bin and b/firmware/mt7996/mt7992_wm.bin differ
+diff --git a/firmware/mt7996/mt7992_wm_23.bin b/firmware/mt7996/mt7992_wm_23.bin
+index 4243479..18fd750 100644
+Binary files a/firmware/mt7996/mt7992_wm_23.bin and b/firmware/mt7996/mt7992_wm_23.bin differ
+diff --git a/firmware/mt7996/mt7996_wa.bin b/firmware/mt7996/mt7996_wa.bin
+index 0175ff2..2d3c72f 100644
+Binary files a/firmware/mt7996/mt7996_wa.bin and b/firmware/mt7996/mt7996_wa.bin differ
+diff --git a/firmware/mt7996/mt7996_wa_233.bin b/firmware/mt7996/mt7996_wa_233.bin
+index 5dc0b56..b7a95bb 100644
+Binary files a/firmware/mt7996/mt7996_wa_233.bin and b/firmware/mt7996/mt7996_wa_233.bin differ
+diff --git a/firmware/mt7996/mt7996_wm.bin b/firmware/mt7996/mt7996_wm.bin
+index e5991c8..16a5891 100644
+Binary files a/firmware/mt7996/mt7996_wm.bin and b/firmware/mt7996/mt7996_wm.bin differ
+diff --git a/firmware/mt7996/mt7996_wm_233.bin b/firmware/mt7996/mt7996_wm_233.bin
+index 1f5db8b..16c18cb 100644
+Binary files a/firmware/mt7996/mt7996_wm_233.bin and b/firmware/mt7996/mt7996_wm_233.bin differ
 diff --git a/mac80211.c b/mac80211.c
+index 084d9cc..9b0f32a 100644
 --- a/mac80211.c
 +++ b/mac80211.c
-@@ -886,6 +886,7 @@
+@@ -886,6 +886,7 @@ static void mt76_rx_release_amsdu(struct mt76_phy *phy, enum mt76_rxq_id q)
  	struct sk_buff *skb = phy->rx_amsdu[q].head;
  	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
  	struct mt76_dev *dev = phy->dev;
@@ -32,7 +163,7 @@ diff --git a/mac80211.c b/mac80211.c
  
  	phy->rx_amsdu[q].head = NULL;
  	phy->rx_amsdu[q].tail = NULL;
-@@ -914,6 +915,11 @@
+@@ -914,6 +915,11 @@ static void mt76_rx_release_amsdu(struct mt76_phy *phy, enum mt76_rxq_id q)
  			return;
  		}
  	}
@@ -45,9 +176,10 @@ diff --git a/mac80211.c b/mac80211.c
  }
  
 diff --git a/mt76.h b/mt76.h
+index 273f38e..bba92d4 100644
 --- a/mt76.h
 +++ b/mt76.h
-@@ -163,6 +163,7 @@
+@@ -163,6 +163,7 @@ enum mt76_rxq_id {
  	MT_RXQ_RRO_RXDMAD_C,
  	MT_RXQ_NPU0,
  	MT_RXQ_NPU1,
@@ -56,9 +188,10 @@ diff --git a/mt76.h b/mt76.h
  };
  
 diff --git a/mt7996/dma.c b/mt7996/dma.c
+index 8f5d297..6eca4e9 100644
 --- a/mt7996/dma.c
 +++ b/mt7996/dma.c
-@@ -45,6 +45,8 @@
+@@ -45,6 +45,8 @@ static int mt7996_poll_tx(struct napi_struct *napi, int budget)
  
  static void mt7996_dma_config(struct mt7996_dev *dev)
  {
@@ -67,7 +200,7 @@ diff --git a/mt7996/dma.c b/mt7996/dma.c
  #define Q_CONFIG(q, wfdma, int, id) do {		\
  	if (wfdma)					\
  		dev->q_wfdma_mask |= (1 << (q));	\
-@@ -126,6 +128,17 @@
+@@ -126,6 +128,17 @@ static void mt7996_dma_config(struct mt7996_dev *dev)
  				   MT7996_RXQ_RRO_RXDMAD_C);
  	}
  
@@ -85,7 +218,7 @@ diff --git a/mt7996/dma.c b/mt7996/dma.c
  	/* data tx queue */
  	if (is_mt7996(&dev->mt76)) {
  		if (dev->hif2) {
-@@ -348,13 +361,16 @@
+@@ -348,13 +361,16 @@ void mt7996_dma_start(struct mt7996_dev *dev, bool reset, bool wed_reset)
  			irq_mask |= MT_INT_RX_TXFREE_BAND1_EXT;
  	}
  
@@ -103,7 +236,7 @@ diff --git a/mt7996/dma.c b/mt7996/dma.c
  		mt76_wr(dev, MT_INT_MASK_CSR, wed_irq_mask);
  		mtk_wed_device_start(wed, wed_irq_mask);
  	}
-@@ -527,7 +543,8 @@
+@@ -527,7 +543,8 @@ int mt7996_dma_rro_init(struct mt7996_dev *dev)
  	if (dev->mt76.hwrro_mode == MT76_HWRRO_V3_1) {
  		/* rxdmad_c */
  		mdev->q_rx[MT_RXQ_RRO_RXDMAD_C].flags = MT_WED_RRO_Q_RXDMAD_C;
@@ -113,17 +246,17 @@ diff --git a/mt7996/dma.c b/mt7996/dma.c
  			mdev->q_rx[MT_RXQ_RRO_RXDMAD_C].wed = &mdev->mmio.wed;
  		else if (!mt76_npu_device_active(&dev->mt76))
  			mdev->q_rx[MT_RXQ_RRO_RXDMAD_C].flags |= MT_QFLAG_EMI_EN;
-@@ -626,6 +643,9 @@
- 	if (mtk_wed_device_active(&dev->mt76.mmio.wed)) {
+@@ -627,6 +644,9 @@ void mt7996_dma_rro_start(struct mt7996_dev *dev)
  		irq_mask = dev->mt76.mmio.irqmask |
  			   MT_INT_TX_DONE_BAND2;
-+
+ 
 +		if (dev->mt76.mmio.wed.version == MTK_WED_HW_V3_1)
 +			irq_mask |= MT_INT_RX(MT_RXQ_WED_RX_DATA);
- 
++
  		mt76_wr(dev, MT_INT_MASK_CSR, irq_mask);
  		mtk_wed_device_start_hw_rro(&dev->mt76.mmio.wed, irq_mask,
-@@ -737,7 +757,8 @@
+ 					    false);
+@@ -737,7 +757,8 @@ int mt7996_dma_init(struct mt7996_dev *dev)
  		return ret;
  
  	/* rx data queue for band0 and mt7996 band1 */
@@ -133,7 +266,7 @@ diff --git a/mt7996/dma.c b/mt7996/dma.c
  		dev->mt76.q_rx[MT_RXQ_MAIN].flags = MT_WED_Q_RX(0);
  		dev->mt76.q_rx[MT_RXQ_MAIN].wed = wed;
  	}
-@@ -750,6 +771,20 @@
+@@ -750,6 +771,20 @@ int mt7996_dma_init(struct mt7996_dev *dev)
  	if (ret)
  		return ret;
  
@@ -154,7 +287,7 @@ diff --git a/mt7996/dma.c b/mt7996/dma.c
  	/* tx free notify event from WA for band0 */
  	if (mtk_wed_device_active(wed) &&
  	    ((is_mt7996(&dev->mt76) && !mt7996_has_hwrro(dev)) ||
-@@ -826,7 +861,8 @@
+@@ -826,7 +861,8 @@ int mt7996_dma_init(struct mt7996_dev *dev)
  	} else if (mt7996_band_valid(dev, MT_BAND1)) {
  		/* rx data queue for mt7992 band1 */
  		rx_base = MT_RXQ_RING_BASE(MT_RXQ_BAND1) + hif1_ofs;
@@ -164,7 +297,7 @@ diff --git a/mt7996/dma.c b/mt7996/dma.c
  			dev->mt76.q_rx[MT_RXQ_BAND1].flags = MT_WED_Q_RX(1);
  			dev->mt76.q_rx[MT_RXQ_BAND1].wed = wed;
  		}
-@@ -872,7 +908,7 @@
+@@ -872,7 +908,7 @@ int mt7996_dma_init(struct mt7996_dev *dev)
  		if (ret)
  			return ret;
  
@@ -173,7 +306,7 @@ diff --git a/mt7996/dma.c b/mt7996/dma.c
  			dev->mt76.q_rx[MT_RXQ_RRO_BAND1].flags =
  				MT_WED_RRO_Q_DATA(1) | MT_QFLAG_WED_RRO_EN;
  			if (mtk_wed_device_active(wed) &&
-@@ -1040,7 +1076,8 @@
+@@ -1040,7 +1076,8 @@ void mt7996_dma_reset(struct mt7996_dev *dev, bool force)
  	mt76_for_each_q_rx(&dev->mt76, i) {
  		if (mtk_wed_device_active(&dev->mt76.mmio.wed) && force &&
  		    (mt76_queue_is_wed_rro_ind(&dev->mt76.q_rx[i]) ||
@@ -184,9 +317,10 @@ diff --git a/mt7996/dma.c b/mt7996/dma.c
  
  		mt76_queue_rx_reset(dev, i);
 diff --git a/mt7996/mac.c b/mt7996/mac.c
+index f7694fa..143d216 100644
 --- a/mt7996/mac.c
 +++ b/mt7996/mac.c
-@@ -2312,7 +2312,8 @@
+@@ -2312,7 +2312,8 @@ mt7996_mac_restart(struct mt7996_dev *dev)
  		mt7996_rro_hw_init(dev);
  		mt76_for_each_q_rx(&dev->mt76, i) {
  			if (mt76_queue_is_wed_rro_ind(&dev->mt76.q_rx[i]) ||
@@ -197,9 +331,10 @@ diff --git a/mt7996/mac.c b/mt7996/mac.c
  		}
  
 diff --git a/mt7996/mmio.c b/mt7996/mmio.c
+index d9780bb..ddb6fd3 100644
 --- a/mt7996/mmio.c
 +++ b/mt7996/mmio.c
-@@ -453,6 +453,16 @@
+@@ -453,6 +453,16 @@ out:
  }
  #endif
  
@@ -216,7 +351,7 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
  int mt7996_mmio_wed_init(struct mt7996_dev *dev, void *pdev_ptr,
  			 bool hif2, int *irq)
  {
-@@ -460,17 +470,36 @@
+@@ -460,18 +470,37 @@ int mt7996_mmio_wed_init(struct mt7996_dev *dev, void *pdev_ptr,
  	struct mtk_wed_device *wed = &dev->mt76.mmio.wed;
  	struct pci_dev *pci_dev = pdev_ptr;
  	u32 hif1_ofs;
@@ -233,7 +368,7 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
 -
  	if (hif2)
  		wed = &dev->mt76.mmio.wed_hif2;
-+
+ 
 +	wed_hw_ver = mtk_wed_device_get_hw_version();
 +	tx_token_size = MT7996_WED_TOKEN_SIZE;
 +
@@ -255,10 +390,11 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
 +	}
 +
 +	hif1_ofs = dev->hif2 ? MT_WFDMA0_PCIE1(0) - MT_WFDMA0(0) : 0;
- 
++
  	wed->wlan.pci_dev = pci_dev;
  	wed->wlan.bus_type = MTK_WED_BUS_PCIE;
-@@ -488,20 +517,25 @@
+ 
+@@ -488,20 +517,25 @@ int mt7996_mmio_wed_init(struct mt7996_dev *dev, void *pdev_ptr,
  				      MT_INT_PCIE1_SOURCE_CSR_EXT;
  		wed->wlan.wpdma_mask = wed->wlan.phy_base +
  				       MT_INT_PCIE1_MASK_CSR;
@@ -288,20 +424,19 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
  			}
  		} else {
  			wed->wlan.wpdma_txfree = wed->wlan.phy_base + hif1_ofs +
-@@ -511,24 +545,29 @@
+@@ -511,24 +545,29 @@ int mt7996_mmio_wed_init(struct mt7996_dev *dev, void *pdev_ptr,
  		}
  
  		wed->wlan.wpdma_rx_glo = wed->wlan.phy_base + hif1_ofs + MT_WFDMA0_GLO_CFG;
 -		wed->wlan.wpdma_rx[0] = wed->wlan.phy_base + hif1_ofs +
 -					MT_RXQ_RING_BASE(MT7996_RXQ_BAND2) +
 -					MT7996_RXQ_BAND2 * MT_RING_SIZE;
--
--		wed->wlan.id = MT7996_DEVICE_ID_2;
 +		if (wed_hw_ver == MTK_WED_HW_V3)
 +			wed->wlan.wpdma_rx[0] = wed->wlan.phy_base + hif1_ofs +
 +						MT_RXQ_RING_BASE(MT7996_RXQ_BAND2) +
 +						MT7996_RXQ_BAND2 * MT_RING_SIZE;
-+
+ 
+-		wed->wlan.id = MT7996_DEVICE_ID_2;
 +		wed->wlan.fc_disable = true;
  		wed->wlan.tx_tbit[0] = ffs(MT_INT_TX_DONE_BAND2) - 1;
  	} else {
@@ -329,7 +464,7 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
  
  		wed->wlan.wpdma_rx_rro[0] = wed->wlan.phy_base +
  					    MT_RXQ_RING_BASE(MT7996_RXQ_RRO_BAND0) +
-@@ -541,20 +580,34 @@
+@@ -541,20 +580,34 @@ int mt7996_mmio_wed_init(struct mt7996_dev *dev, void *pdev_ptr,
  			wed->wlan.wpdma_rx_rro[1] = wed->wlan.phy_base + hif1_ofs +
  						    MT_RXQ_RING_BASE(MT7996_RXQ_RRO_BAND1) +
  						    MT7996_RXQ_RRO_BAND1 * MT_RING_SIZE;
@@ -372,7 +507,7 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
  		wed->wlan.rro_rx_tbit[0] = ffs(MT_INT_RX_DONE_RRO_BAND0) - 1;
  		if (is_mt7996(&dev->mt76)) {
  			wed->wlan.rx_tbit[1] = ffs(MT_INT_RX_DONE_BAND2) - 1;
-@@ -564,9 +617,15 @@
+@@ -564,9 +617,15 @@ int mt7996_mmio_wed_init(struct mt7996_dev *dev, void *pdev_ptr,
  			wed->wlan.rro_rx_tbit[1] = ffs(MT_INT_RX_DONE_RRO_BAND1) - 1;
  		}
  
@@ -391,7 +526,7 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
  
  		wed->wlan.tx_tbit[0] = ffs(MT_INT_TX_DONE_BAND0) - 1;
  		wed->wlan.tx_tbit[1] = ffs(MT_INT_TX_DONE_BAND1) - 1;
-@@ -582,18 +641,26 @@
+@@ -582,19 +641,27 @@ int mt7996_mmio_wed_init(struct mt7996_dev *dev, void *pdev_ptr,
  							 MT7996_RXQ_MCU_WA_MAIN * MT_RING_SIZE;
  				wed->wlan.txfree_tbit = ffs(MT_INT_RX_DONE_WA_MAIN) - 1;
  			}
@@ -417,11 +552,13 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
  	}
  
 -	wed->wlan.nbuf = MT7996_HW_TOKEN_SIZE;
+-	wed->wlan.token_start = MT7996_TOKEN_SIZE - wed->wlan.nbuf;
 +	wed->wlan.nbuf = tx_token_size;
- 	wed->wlan.token_start = MT7996_TOKEN_SIZE - wed->wlan.nbuf;
++	wed->wlan.token_start = 0;
  	wed->wlan.hif2 = hif2;
  
-@@ -610,8 +677,11 @@
+ 	wed->wlan.amsdu_max_subframes = 8;
+@@ -610,11 +677,17 @@ int mt7996_mmio_wed_init(struct mt7996_dev *dev, void *pdev_ptr,
  		wed->wlan.reset_complete = mt76_wed_reset_complete;
  	}
  
@@ -434,18 +571,35 @@ diff --git a/mt7996/mmio.c b/mt7996/mmio.c
  		return 0;
  	}
  
++	/* Keep host TX tokens above the WED-owned hardware token range. */
++	dev->mt76.token_start = wed->wlan.nbuf;
++
+ 	*irq = wed->irq;
+ 	dev->mt76.dma_dev = wed->dev;
+ 
+@@ -826,7 +899,7 @@ struct mt7996_dev *mt7996_mmio_probe(struct device *pdev,
+ 		.survey_flags = SURVEY_INFO_TIME_TX |
+ 				SURVEY_INFO_TIME_RX |
+ 				SURVEY_INFO_TIME_BSS_RX,
+-		.token_size = MT7996_TOKEN_SIZE,
++		.token_size = MT7996_SW_TOKEN_SIZE,
+ 		.tx_prepare_skb = mt7996_tx_prepare_skb,
+ 		.tx_complete_skb = mt76_connac_tx_complete_skb,
+ 		.rx_skb = mt7996_queue_rx_skb,
 diff --git a/mt7996/mt7996.h b/mt7996/mt7996.h
+index 2097cbe..107c889 100644
 --- a/mt7996/mt7996.h
 +++ b/mt7996/mt7996.h
-@@ -94,6 +94,7 @@
+@@ -94,6 +94,8 @@
  #define MT7996_EXT_EEPROM_BLOCK_SIZE	1024
  #define MT7996_TOKEN_SIZE		16384
  #define MT7996_HW_TOKEN_SIZE		8192
 +#define MT7996_WED_TOKEN_SIZE		16384
++#define MT7996_SW_TOKEN_SIZE		15360
  
  #define MT7996_CFEND_RATE_DEFAULT	0x49	/* OFDM 24M */
  #define MT7996_CFEND_RATE_11B		0x03	/* 11B LP, 11M */
-@@ -190,6 +191,7 @@
+@@ -190,6 +192,7 @@ enum mt7996_eeprom_mode {
  #define MT7992_EFUSE_BASE_OFFS_ADIE1	0x1200
  
  enum mt7996_txq_id {
@@ -453,7 +607,7 @@ diff --git a/mt7996/mt7996.h b/mt7996/mt7996.h
  	MT7996_TXQ_FWDL = 16,
  	MT7996_TXQ_MCU_WM,
  	MT7996_TXQ_BAND0,
-@@ -212,6 +214,7 @@
+@@ -212,6 +215,7 @@ enum mt7996_rxq_id {
  	MT7996_RXQ_RRO_BAND2 = 6,
  	MT7996_RXQ_MSDU_PG_BAND0 = 10,
  	MT7996_RXQ_MSDU_PG_BAND1 = 11,
@@ -462,19 +616,20 @@ diff --git a/mt7996/mt7996.h b/mt7996/mt7996.h
  	MT7996_RXQ_TXFREE0 = 9,
  	MT7996_RXQ_TXFREE1 = 9,
 diff --git a/mt7996/pci.c b/mt7996/pci.c
+index 12523dd..8de5312 100644
 --- a/mt7996/pci.c
 +++ b/mt7996/pci.c
-@@ -10,6 +10,9 @@
- #include "mt7996.h"
+@@ -11,6 +11,9 @@
  #include "mac.h"
  #include "../trace.h"
-+
+ 
 +static int rro_mode = MT76_HWRRO_OFF;
 +module_param(rro_mode, int, 0644);
- 
++
  static LIST_HEAD(hif_list);
  static DEFINE_SPINLOCK(hif_lock);
-@@ -136,6 +139,19 @@
+ static u32 hif_idx;
+@@ -136,6 +139,19 @@ static int mt7996_pci_probe(struct pci_dev *pdev,
  		return PTR_ERR(dev);
  
  	mdev = &dev->mt76;
@@ -495,9 +650,10 @@ diff --git a/mt7996/pci.c b/mt7996/pci.c
  	hif2 = mt7996_pci_init_hif2(pdev);
  	dev->hif2 = hif2;
 diff --git a/mt7996/regs.h b/mt7996/regs.h
+index c637993..8700709 100644
 --- a/mt7996/regs.h
 +++ b/mt7996/regs.h
-@@ -541,6 +541,7 @@
+@@ -541,6 +541,7 @@ enum offs_rev {
  #define MT_INT_RX_DONE_WA_MAIN			BIT(2)
  #define MT_INT_RX_DONE_WA_EXT			BIT(3) /* for mt7992 */
  #define MT_INT_RX_DONE_WA_TRI			BIT(3)
@@ -505,7 +661,7 @@ diff --git a/mt7996/regs.h b/mt7996/regs.h
  #define MT_INT_RX_TXFREE_MAIN			BIT(17)
  #define MT_INT_RX_TXFREE_BAND1			BIT(15)
  #define MT_INT_RX_TXFREE_TRI			BIT(15)
-@@ -558,6 +559,7 @@
+@@ -558,6 +559,7 @@ enum offs_rev {
  #define MT_INT_RX_DONE_RRO_RXDMAD_C		BIT(11)
  #define MT_INT_RX_DONE_MSDU_PG_BAND0		BIT(18)
  #define MT_INT_RX_DONE_MSDU_PG_BAND1		BIT(19)
@@ -513,10 +669,48 @@ diff --git a/mt7996/regs.h b/mt7996/regs.h
  #define MT_INT_RX_DONE_MSDU_PG_BAND2		BIT(23)
  
  #define MT_INT_RX(q)				(dev->q_int_mask[__RXQ(q)])
+diff --git a/tx.c b/tx.c
+index 22f9690..a472869 100644
+--- a/tx.c
++++ b/tx.c
+@@ -877,7 +877,9 @@ int mt76_token_consume(struct mt76_dev *dev, struct mt76_txwi_cache **ptxwi)
+ 
+ #ifdef CONFIG_NET_MEDIATEK_SOC_WED
+ 	if (mtk_wed_device_active(&dev->mmio.wed) &&
+-	    token >= dev->mmio.wed.wlan.token_start)
++	    token >= dev->mmio.wed.wlan.token_start &&
++	    token < dev->mmio.wed.wlan.token_start +
++		    dev->mmio.wed.wlan.nbuf)
+ 		dev->wed_token_count++;
+ #endif
+ 
+@@ -928,6 +930,8 @@ mt76_token_release(struct mt76_dev *dev, int token, bool *wake)
+ #ifdef CONFIG_NET_MEDIATEK_SOC_WED
+ 		if (mtk_wed_device_active(&dev->mmio.wed) &&
+ 		    token >= dev->mmio.wed.wlan.token_start &&
++		    token < dev->mmio.wed.wlan.token_start +
++			    dev->mmio.wed.wlan.nbuf &&
+ 		    --dev->wed_token_count == 0)
+ 			wake_up(&dev->tx_wait);
+ #endif
 diff --git a/wed.c b/wed.c
+index ed657d9..2d9b2db 100644
 --- a/wed.c
 +++ b/wed.c
-@@ -151,6 +151,11 @@
+@@ -83,7 +83,11 @@ int mt76_wed_offload_enable(struct mtk_wed_device *wed)
+ 	struct mt76_dev *dev = mt76_wed_to_dev(wed);
+ 
+ 	spin_lock_bh(&dev->token_lock);
+-	dev->token_size = wed->wlan.token_start;
++	/* mt7996 reserves low IDs for WED before any host TX is submitted.
++	 * Older drivers lend their upper host IDs to WED on first flow.
++	 */
++	dev->token_size = dev->token_start ? dev->drv->token_size :
++			  wed->wlan.token_start;
+ 	spin_unlock_bh(&dev->token_lock);
+ 
+ 	return !wait_event_timeout(dev->tx_wait, !dev->wed_token_count, HZ);
+@@ -151,6 +155,11 @@ int mt76_wed_dma_setup(struct mt76_dev *dev, struct mt76_queue *q, bool reset)
  		mt76_dma_rx_fill(dev, q, false);
  		mtk_wed_device_ind_rx_ring_setup(q->wed, q->regs);
  		break;

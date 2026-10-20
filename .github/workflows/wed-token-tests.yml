@@ -1,0 +1,31 @@
+name: WED token ownership regression
+on:
+  workflow_dispatch:
+  push:
+    branches: [wed-token-repair]
+    paths:
+      - '.github/workflows/wed-token-tests.yml'
+      - 'experiments/turboacc/test_wed_tokens.py'
+      - 'experiments/turboacc/mt7987-wed-mt76.patch'
+permissions:
+  contents: read
+jobs:
+  tokens:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Check public source and card controls
+        run: |
+          python3 scripts/public_source_audit.py
+          node experiments/turboacc/test_cards.cjs
+      - name: Execute actual pinned driver token callbacks
+        run: |
+          commit=$(python3 -c 'import json; print(json.load(open("experiments/turboacc/sources.json"))["mt76_commit"])')
+          curl --fail --location --retry 3 "https://codeload.github.com/openwrt/mt76/tar.gz/$commit" -o "$RUNNER_TEMP/mt76.tar.gz"
+          mkdir "$RUNNER_TEMP/mt76"
+          tar -xzf "$RUNNER_TEMP/mt76.tar.gz" -C "$RUNNER_TEMP/mt76" --strip-components=1
+          git -C "$RUNNER_TEMP/mt76" apply "$GITHUB_WORKSPACE/experiments/turboacc/mt7987-wed-mt76.patch"
+          python3 experiments/turboacc/test_wed_tokens.py "$RUNNER_TEMP/mt76"

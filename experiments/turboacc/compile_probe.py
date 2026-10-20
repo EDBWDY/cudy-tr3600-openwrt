@@ -137,6 +137,7 @@ def wed_mt76_dependency_check():
     mt76 = BUILD / ('mt76-' + LOCK['mt76_commit'])
     run(['git', 'apply', '--check', HERE / 'mt7987-wed-mt76.patch'], mt76)
     run(['git', 'apply', HERE / 'mt7987-wed-mt76.patch'], mt76)
+    run(['python3', HERE / 'test_wed_tokens.py', mt76], BUILD)
     bp_archive = download(LOCK['backports']['url'], BUILD / 'backports.tar.zst')
     if hashlib.file_digest(bp_archive.open('rb'), 'sha256').hexdigest() != LOCK['backports']['sha256']:
         raise RuntimeError('Backports checksum mismatch')
